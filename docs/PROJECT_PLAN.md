@@ -7,6 +7,13 @@ Personal Dash is a self-hosted, multi-user personal dashboard application that a
 - **Frontend:** React with Vite, Tailwind CSS
 - **Backend:** Python with FastAPI
 - **Database:** MySQL
+- **Database Connection:** The application expects the following environment variables to be set for database connectivity, as defined in `backend/.env`:
+  - `DBMS`: The database management system (e.g., 'mysql').
+  - `USER_NAME`: The database user.
+  - `PASSWORD`: The database password.
+  - `HOST`: The database host (e.g., 'localhost').
+  - `DATABASE_NAME`: The name of the database.
+  - `PORT`: The port number for the database connection.
 - **Authentication:** JWT with refresh tokens
 - **Deployment:** Self-hosted Linux (systemd + Nginx)
 
