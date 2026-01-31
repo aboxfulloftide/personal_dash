@@ -59,10 +59,18 @@ personal-dash/
 │   ├── PROJECT_PLAN.md
 │   ├── TECH_SPECS.md
 │   └── tasks/          # Individual task files
+│       ├── completed/  # Completed task files
+│       └── completed_tasks.md
 └── tests/              # Test suites
 ```
 
 ## Task Breakdown
+
+### Task Completion Process
+Once a task is completed:
+1.  Move the corresponding task file from `docs/tasks/` to `docs/tasks/completed/`.
+2.  Update `docs/tasks/completed_tasks.md` to reflect the completion and the new location of the task file.
+
 1. Project Setup
 2. Database Models & Migrations
 3. Authentication System

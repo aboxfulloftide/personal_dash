@@ -1,0 +1,8 @@
+DBMS = mysql
+USER_NAME = matheau
+PASSWORD = Icantype21
+HOST = localhost
+DATABASE_NAME = personalDash
+PORT = 3306
+SECRET_KEY=your-secret-key-here-change-in-production
+CORS_ORIGINS=["http://localhost:5173"]

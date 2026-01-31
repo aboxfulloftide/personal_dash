@@ -5,6 +5,6 @@ import react from '@vitejs/plugin-react'
 export default defineConfig({
   plugins: [react()],
   server: {
-    host: true, // This makes the server accessible externally
+    host: '0.0.0.0', // Explicitly bind to all network interfaces for external access
   }
 })
