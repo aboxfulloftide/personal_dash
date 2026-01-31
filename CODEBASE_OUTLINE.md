@@ -7,6 +7,7 @@ This document provides a high-level overview of the project structure and key fi
 - `cred.txt`: (Sensitive, generally ignored by git) Credentials or sensitive information.
 - `requirements.txt`: Python dependencies for the backend.
 - `alembic/`: Database migration scripts.
+    - `versions/`: Directory containing individual migration files.
 - `app/`
     - `__init__.py`: Initializes the FastAPI application.
     - `main.py`: Main entry point for the FastAPI application.
@@ -21,12 +22,12 @@ This document provides a high-level overview of the project structure and key fi
     - `core/`
         - `__init__.py`: Initializes the core module.
         - `config.py`: Application configuration settings.
-        - `database.py`: Database connection and session management.
-        - `dependencies.py`: FastAPI dependency injection for authentication.
-        - `security.py`: Security utilities (password hashing, JWT token management).
+        - `database.py`: Database connection and session management (SQLAlchemy).
+        - `dependencies.py`: FastAPI dependency injection for authentication, database sessions, etc.
+        - `security.py`: Security utilities (password hashing, JWT token management, OAuth2).
     - `models/`
         - `__init__.py`: Initializes the models module.
-        - `auth.py`: Database models for authentication (Refresh Tokens, Password Reset Tokens).
+        - `auth.py`: Database models for authentication (e.g., Refresh Tokens, Password Reset Tokens).
         - `user.py`: Database model for users.
         - `cache.py`: Cache related database models.
         - `fitness.py`: Fitness related database models.
@@ -35,9 +36,10 @@ This document provides a high-level overview of the project structure and key fi
         - `widget.py`: Widget related database models.
     - `schemas/`
         - `__init__.py`: Exposes Pydantic schemas.
-        - `auth.py`: Pydantic schemas for authentication (request/response models).
+        - `auth.py`: Pydantic schemas for authentication (request/response models for user, token, etc.).
     - `services/`
         - `auth_service.py`: Business logic for authentication operations.
+- `test.db`: SQLite database file used for testing or local development.
 - `tests/`
     - `__init__.py`: Initializes the tests module.
     - `test_auth.py`: Unit tests for the authentication system.
@@ -64,12 +66,15 @@ This document provides a high-level overview of the project structure and key fi
         - `auth/`: Authentication components.
             - `LoginForm.jsx`: Component for user login form.
             - `RegisterForm.jsx`: Component for new user registration form.
+        - `common/`: Common reusable components.
         - `layout/`: Layout components.
             - `AuthLayout.jsx`: Provides a consistent layout for authentication forms.
+        - `widgets/`: Directory for individual widget components.
     - `contexts/`: React contexts.
-        - `AuthContext.jsx`: Provides authentication context and state to the React application.
-    - `hooks/`: React hooks.
+        - `AuthContext.jsx`: Provides authentication context and state to the React application, managing user login/logout status and token.
+    - `hooks/`: React hooks for custom logic.
     - `services/`: Frontend services (e.g., API calls).
+        - `api.js`: Centralized API client configuration and utility functions.
         - `AuthService.js`: Handles authentication-related API calls (login, register, logout, refresh).
     - `styles/`: Stylesheets.
     - `utils/`: Utility functions.
@@ -77,10 +82,27 @@ This document provides a high-level overview of the project structure and key fi
 ## Documentation (`docs/`)
 - `PROJECT_PLAN.md`: Overall project plan.
 - `TECH_SPECS.md`: Technical specifications.
-- `tasks/`: Directory for task-specific documentation.
-    - `003_authentication_system.md`: Details for authentication system implementation.
-    - `completed_tasks.md`: List of completed tasks.
-    - `completed/`: Directory for completed task documentation.
+- `tasks/`: Directory for task-specific documentation (pending tasks).
+    - `005_dashboard_layout_widget_framework.md`: Task for dashboard layout and widget framework.
+    - `006_weather_widget.md`: Task for weather widget.
+    - `007_stock_market_widget.md`: Task for stock market widget.
+    - `008_cryptocurrency_widget.md`: Task for cryptocurrency widget.
+    - `009_server_monitoring_dashboard.md`: Task for server monitoring dashboard.
+    - `010_server_monitoring_agent.md`: Task for server monitoring agent.
+    - `011_package_tracking_widget.md`: Task for package tracking widget.
+    - `012_weather_widget.md`: Task for weather widget (duplicate, potentially to be resolved).
+    - `013_stock_crypto_widgets.md`: Task for stock and crypto widgets.
+    - `014_calendar_widget.md`: Task for calendar widget.
+    - `015_news_widget.md`: Task for news widget.
+    - `016_fitness_stats_widget.md`: Task for fitness stats widget.
+    - `017_dashboard_layout_polish.md`: Task for dashboard layout polishing.
+    - `completed_tasks.md`: List summarizing all completed tasks.
+    - `completed/`: Directory for documentation of completed tasks.
+        - `001_project_setup.md`: Documentation for initial project setup.
+        - `002_database_models.md`: Documentation for database models.
+        - `003_authentication_system.md`: Documentation for the authentication system.
+        - `004_frontend_auth_ui.md`: Documentation for frontend authentication UI.
+        - `token/`: Directory containing images related to token handling (e.g., `step_3.png`, `step_4.png`).
 
 ## Other
 - `.gitignore`: Git ignore rules for the project root.
