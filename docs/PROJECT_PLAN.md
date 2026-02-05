@@ -65,7 +65,7 @@ personal-dash/
 - [x] 4. Frontend Authentication UI
 - [x] 5. Dashboard Layout & Widget Grid
 - [x] 6. Widget Base Architecture
-- [ ] 7. Server Monitoring Agent
+- [x] 7. Server Monitoring Agent
 - [ ] 8. Server Monitoring API
 - [ ] 9. Server Monitoring Dashboard Widget
 - [ ] 10. Package Tracking Backend

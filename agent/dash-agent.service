@@ -1,0 +1,25 @@
+[Unit]
+Description=Personal Dash Monitoring Agent
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=dash-agent
+Group=dash-agent
+EnvironmentFile=/etc/dash-agent/agent.env
+ExecStart=/opt/dash-agent/venv/bin/python /opt/dash-agent/dash_agent.py
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=dash-agent
+
+# Security hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
