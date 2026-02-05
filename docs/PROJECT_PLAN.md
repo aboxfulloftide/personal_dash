@@ -27,7 +27,6 @@ Personal Dash is a self-hosted, multi-user personal dashboard application that a
 7. **News Headlines** - RSS/News API aggregation
 8. **Fitness Stats** - Body weight tracking (manual entry)
 9. **Smart Home** - Home Assistant integration
-10. **GitHub Activity** - Repository stats and activity
 
 ## Architecture Principles
 - Monorepo structure
@@ -73,6 +72,6 @@ personal-dash/
 - [x] 12. Stock Ticker Widget
 - [x] 13. Crypto Widget
 - [x] 14. Weather Widget
-- [ ] 15. Additional Widgets (Calendar, News, Fitness, Smart Home, GitHub)
+- [ ] 15. Additional Widgets (Calendar, News, Fitness, Smart Home)
 - [ ] 16. Email Integration for Package Tracking
 - [ ] 17. Deployment & Documentation

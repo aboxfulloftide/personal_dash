@@ -226,7 +226,6 @@ Display current weather conditions and 5-day forecast for any location.
 | Calendar | Google Calendar integration |
 | News Headlines | RSS/News API aggregation |
 | Smart Home | Home Assistant integration |
-| GitHub Activity | Repository stats and activity |
 
 ## Development
 
