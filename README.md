@@ -200,11 +200,28 @@ Track cryptocurrency prices and calculate your portfolio value.
 
 ---
 
+### Weather
+Display current weather conditions and 5-day forecast for any location.
+
+**Features:**
+- Current temperature, feels like, humidity, and conditions
+- 5-day forecast with high/low temps
+- Weather icons (☀️ sunny, ⛅ partly cloudy, ☁️ cloudy, 🌧️ rainy, ❄️ snowy, ⛈️ stormy)
+- Fahrenheit or Celsius display
+- Automatic location geocoding (just enter city name)
+
+**API Providers:**
+| Provider | Rate Limit | API Key |
+|---|---|---|
+| Open-Meteo (default) | Unlimited | Not required |
+| OpenWeatherMap | 1000 requests/day | Required (free signup) |
+
+---
+
 ### Planned Widgets
 
 | Widget | Description |
 |---|---|
-| Weather | Current conditions and forecast |
 | Fitness Stats | Body weight tracking with charts |
 | Calendar | Google Calendar integration |
 | News Headlines | RSS/News API aggregation |
