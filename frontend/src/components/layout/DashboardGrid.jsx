@@ -14,6 +14,7 @@ export default function DashboardGrid({
   onLayoutChange,
   onRemoveWidget,
   onWidgetSettings,
+  onWidgetConfigChange,
   isEditing
 }) {
   const [containerWidth, setContainerWidth] = useState(1200);
@@ -53,6 +54,7 @@ export default function DashboardGrid({
               config={widget.config}
               onRemove={() => onRemoveWidget(widget.id)}
               onSettings={() => onWidgetSettings(widget.id)}
+              onConfigChange={(newConfig) => onWidgetConfigChange?.(widget.id, newConfig)}
               isEditing={isEditing}
             />
           </div>

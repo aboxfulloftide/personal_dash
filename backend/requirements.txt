@@ -24,3 +24,4 @@ typing_extensions==4.15.0
 uvicorn==0.40.0
 python-jose[cryptography]==3.3.0
 passlib[bcrypt]==1.7.4
+httpx==0.28.1

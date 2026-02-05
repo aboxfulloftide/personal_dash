@@ -70,8 +70,8 @@ personal-dash/
 - [x] 9. Server Monitoring Dashboard Widget
 - [x] 10. Package Tracking Backend
 - [x] 11. Package Tracking Widget
-- [ ] 12. Stock Ticker Widget
-- [ ] 13. Crypto Widget
+- [x] 12. Stock Ticker Widget
+- [x] 13. Crypto Widget
 - [ ] 14. Weather Widget
 - [ ] 15. Additional Widgets (Calendar, News, Fitness, Smart Home, GitHub)
 - [ ] 16. Email Integration for Package Tracking

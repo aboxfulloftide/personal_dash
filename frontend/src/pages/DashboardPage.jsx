@@ -73,6 +73,7 @@ export default function DashboardPage() {
             onLayoutChange={updateLayout}
             onRemoveWidget={removeWidget}
             onWidgetSettings={handleWidgetSettings}
+            onWidgetConfigChange={updateWidgetConfig}
             isEditing={isEditing}
           />
         )}

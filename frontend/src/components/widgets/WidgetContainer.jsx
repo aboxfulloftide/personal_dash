@@ -36,6 +36,7 @@ export default function WidgetContainer({
   config = {},
   onRemove,
   onSettings,
+  onConfigChange,
   isEditing = false
 }) {
   const [error, setError] = useState(null);
@@ -89,7 +90,7 @@ export default function WidgetContainer({
           <WidgetError error={error} onRetry={handleRetry} />
         ) : (
           <Suspense fallback={<WidgetLoader />} key={retryKey}>
-            <WidgetComponent config={config} />
+            <WidgetComponent config={config} onConfigChange={onConfigChange} />
           </Suspense>
         )}
       </div>
