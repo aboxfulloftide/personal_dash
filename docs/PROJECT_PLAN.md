@@ -69,7 +69,7 @@ personal-dash/
 - [x] 8. Server Monitoring API
 - [x] 9. Server Monitoring Dashboard Widget
 - [x] 10. Package Tracking Backend
-- [ ] 11. Package Tracking Widget
+- [x] 11. Package Tracking Widget
 - [ ] 12. Stock Ticker Widget
 - [ ] 13. Crypto Widget
 - [ ] 14. Weather Widget

@@ -20,7 +20,7 @@ const widgetRegistry = {
     },
   },
   package_tracker: {
-    component: () => import('./PlaceholderWidget'),
+    component: () => import('./PackageTrackerWidget'),
     name: 'Package Tracker',
     description: 'Track packages from USPS, UPS, FedEx, and Amazon',
     category: 'lifestyle',
