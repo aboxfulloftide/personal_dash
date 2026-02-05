@@ -1,13 +1,15 @@
 from typing import Annotated
 
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, Header, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
-from app.core.security import decode_access_token
+from app.core.security import decode_access_token, verify_password
 from app.crud.user import get_user_by_id
+from app.crud.server import get_server
 from app.models.user import User
+from app.models.server import Server
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
 
@@ -70,3 +72,28 @@ CurrentUser = Annotated[User, Depends(get_current_user)]
 CurrentActiveUser = Annotated[User, Depends(get_current_active_user)]
 CurrentAdminUser = Annotated[User, Depends(get_current_admin_user)]
 DbSession = Annotated[Session, Depends(get_db)]
+
+
+def verify_api_key(
+    server_id: int,
+    db: Session,
+    x_api_key: str = Header(..., alias="X-API-Key"),
+) -> Server:
+    """Verify API key for server agent authentication.
+
+    The server_id comes from the request body, x_api_key from header.
+    Verifies the raw API key against the server's stored bcrypt hash.
+    """
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Invalid API key",
+    )
+
+    server = get_server(db, server_id)
+    if server is None:
+        raise credentials_exception
+
+    if not verify_password(x_api_key, server.api_key_hash):
+        raise credentials_exception
+
+    return server

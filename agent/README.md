@@ -2,6 +2,65 @@
 
 A lightweight Python agent that collects system and Docker metrics from a server and reports them to the Personal Dash backend API.
 
+## Quick Start
+
+Before deploying the agent, you need to register the server in your Personal Dash instance:
+
+### 1. Register the Server via API
+
+```bash
+# Get an access token by logging in
+TOKEN=$(curl -s -X POST https://dash.yourdomain.com/api/v1/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email": "you@example.com", "password": "yourpassword"}' | jq -r '.access_token')
+
+# Register a new server
+curl -X POST https://dash.yourdomain.com/api/v1/servers \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "my-server",
+    "hostname": "server.example.com",
+    "ip_address": "192.168.1.100",
+    "poll_interval": 60
+  }'
+```
+
+Response:
+```json
+{
+  "server": {
+    "id": 1,
+    "name": "my-server",
+    "hostname": "server.example.com",
+    "ip_address": "192.168.1.100",
+    "poll_interval": 60,
+    "is_online": false,
+    "last_seen": null,
+    "created_at": "2024-01-15T10:30:00Z"
+  },
+  "api_key": "abc123...xyz789"
+}
+```
+
+**Save the `api_key` immediately** — it is only shown once. You'll need it and the server `id` for the agent configuration.
+
+### 2. Deploy the Agent
+
+Follow the deployment steps below, using:
+- `DASH_SERVER_ID` = the `id` from the response (e.g., `1`)
+- `DASH_API_KEY` = the `api_key` from the response
+
+## Server Management API
+
+| Endpoint | Method | Auth | Description |
+|---|---|---|---|
+| `/api/v1/servers` | POST | JWT | Register a new server (returns API key) |
+| `/api/v1/servers` | GET | JWT | List your servers |
+| `/api/v1/servers/{id}` | GET | JWT | Get server details with recent metrics |
+| `/api/v1/servers/{id}` | DELETE | JWT | Remove a server |
+| `/api/v1/servers/metrics/report` | POST | API Key | Agent reports metrics (X-API-Key header) |
+
 ## Prerequisites
 
 - Python 3.10+
