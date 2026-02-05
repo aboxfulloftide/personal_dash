@@ -1,14 +1,33 @@
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import { AuthProvider } from './contexts/AuthContext';
+import { ThemeProvider } from './contexts/ThemeContext';
+import ProtectedRoute from './components/auth/ProtectedRoute';
+import LoginPage from './pages/LoginPage';
+import RegisterPage from './pages/RegisterPage';
+import ForgotPasswordPage from './pages/ForgotPasswordPage';
+import DashboardPage from './pages/DashboardPage';
 
 function App() {
   return (
-    <Router>
-      <div className="min-h-screen bg-gray-100 dark:bg-gray-900">
+    <ThemeProvider>
+    <AuthProvider>
+      <Router>
         <Routes>
-          <Route path="/" element={<div className="p-4 text-gray-900 dark:text-white">Personal Dash - Coming Soon</div>} />
+          <Route path="/login" element={<LoginPage />} />
+          <Route path="/register" element={<RegisterPage />} />
+          <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+          <Route
+            path="/"
+            element={
+              <ProtectedRoute>
+                <DashboardPage />
+              </ProtectedRoute>
+            }
+          />
         </Routes>
-      </div>
-    </Router>
+      </Router>
+    </AuthProvider>
+    </ThemeProvider>
   );
 }
 

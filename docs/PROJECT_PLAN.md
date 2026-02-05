@@ -56,20 +56,23 @@ personal-dash/
 ```
 
 ## Task Breakdown
-1. Project Setup
-2. Database Models & Migrations
-3. Authentication System
-4. Frontend Authentication UI
-5. Dashboard Layout & Widget Grid
-6. Widget Base Architecture
-7. Server Monitoring Agent
-8. Server Monitoring API
-9. Server Monitoring Dashboard Widget
-10. Package Tracking Backend
-11. Package Tracking Widget
-12. Stock Ticker Widget
-13. Crypto Widget
-14. Weather Widget
-15. Additional Widgets (Calendar, News, Fitness, Smart Home, GitHub)
-16. Email Integration for Package Tracking
-17. Deployment & Documentation
+
+> **Note:** Mark tasks as completed by changing `[ ]` to `[x]` when done.
+
+- [x] 1. Project Setup
+- [x] 2. Database Models & Migrations
+- [x] 3. Authentication System
+- [x] 4. Frontend Authentication UI
+- [x] 5. Dashboard Layout & Widget Grid
+- [x] 6. Widget Base Architecture
+- [ ] 7. Server Monitoring Agent
+- [ ] 8. Server Monitoring API
+- [ ] 9. Server Monitoring Dashboard Widget
+- [ ] 10. Package Tracking Backend
+- [ ] 11. Package Tracking Widget
+- [ ] 12. Stock Ticker Widget
+- [ ] 13. Crypto Widget
+- [ ] 14. Weather Widget
+- [ ] 15. Additional Widgets (Calendar, News, Fitness, Smart Home, GitHub)
+- [ ] 16. Email Integration for Package Tracking
+- [ ] 17. Deployment & Documentation
