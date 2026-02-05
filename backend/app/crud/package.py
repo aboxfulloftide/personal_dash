@@ -1,0 +1,94 @@
+from datetime import datetime, timezone
+from sqlalchemy.orm import Session
+from sqlalchemy import select
+
+from app.models.package import Package, PackageEvent
+from app.schemas.package import PackageCreate, PackageUpdate, PackageEventCreate
+
+
+def create_package(db: Session, user_id: int, package_in: PackageCreate) -> Package:
+    """Create a new package."""
+    package = Package(
+        user_id=user_id,
+        tracking_number=package_in.tracking_number,
+        carrier=package_in.carrier.value,
+        description=package_in.description,
+        source="manual",
+    )
+    db.add(package)
+    db.commit()
+    db.refresh(package)
+    return package
+
+
+def get_packages(db: Session, user_id: int, include_delivered: bool = False) -> list[Package]:
+    """Get all packages for a user."""
+    query = select(Package).where(Package.user_id == user_id)
+    if not include_delivered:
+        query = query.where(Package.delivered == False)
+    query = query.order_by(Package.created_at.desc())
+    result = db.execute(query)
+    return list(result.scalars().all())
+
+
+def get_package(db: Session, package_id: int) -> Package | None:
+    """Get a package by ID."""
+    return db.get(Package, package_id)
+
+
+def get_package_by_id_and_user(db: Session, package_id: int, user_id: int) -> Package | None:
+    """Get a package by ID with ownership check."""
+    result = db.execute(
+        select(Package).where(Package.id == package_id, Package.user_id == user_id)
+    )
+    return result.scalar_one_or_none()
+
+
+def update_package(db: Session, package: Package, update_data: PackageUpdate) -> Package:
+    """Update a package."""
+    update_dict = update_data.model_dump(exclude_unset=True)
+
+    for field, value in update_dict.items():
+        setattr(package, field, value)
+
+    # If marking as delivered, set delivered_at timestamp
+    if update_data.delivered is True and package.delivered_at is None:
+        package.delivered_at = datetime.now(timezone.utc)
+
+    db.commit()
+    db.refresh(package)
+    return package
+
+
+def delete_package(db: Session, package_id: int) -> bool:
+    """Delete a package. Returns True if deleted."""
+    package = db.get(Package, package_id)
+    if not package:
+        return False
+    db.delete(package)
+    db.commit()
+    return True
+
+
+def add_event(db: Session, package_id: int, event_in: PackageEventCreate) -> PackageEvent:
+    """Add a tracking event to a package."""
+    event = PackageEvent(
+        package_id=package_id,
+        status=event_in.status,
+        location=event_in.location,
+        event_time=event_in.event_time or datetime.now(timezone.utc),
+    )
+    db.add(event)
+    db.commit()
+    db.refresh(event)
+    return event
+
+
+def get_events(db: Session, package_id: int) -> list[PackageEvent]:
+    """Get all events for a package, ordered by event_time descending."""
+    result = db.execute(
+        select(PackageEvent)
+        .where(PackageEvent.package_id == package_id)
+        .order_by(PackageEvent.event_time.desc())
+    )
+    return list(result.scalars().all())
