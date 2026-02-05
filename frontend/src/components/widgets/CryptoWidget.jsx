@@ -1,5 +1,11 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import api from '../../services/api';
+
+// Minimum refresh intervals per provider (in seconds) to avoid rate limits
+const MIN_REFRESH_INTERVALS = {
+  coingecko: 60,   // 10-30 calls/min on free tier
+  coincap: 30,     // 200 requests/min, very generous
+};
 
 const CURRENCY_SYMBOLS = {
   usd: '$',
@@ -165,11 +171,19 @@ export default function CryptoWidget({ config, onConfigChange }) {
     }
   };
 
+  // Calculate effective refresh interval based on provider limits
+  const effectiveRefreshInterval = useMemo(() => {
+    const provider = config.api_provider || 'coingecko';
+    const minInterval = MIN_REFRESH_INTERVALS[provider] || 60;
+    const userInterval = config.refresh_interval || 300;
+    return Math.max(userInterval, minInterval);
+  }, [config.api_provider, config.refresh_interval]);
+
   useEffect(() => {
     fetchPrices();
-    const interval = setInterval(fetchPrices, (config.refresh_interval || 300) * 1000);
+    const interval = setInterval(fetchPrices, effectiveRefreshInterval * 1000);
     return () => clearInterval(interval);
-  }, [holdings.length, config.api_provider, config.api_key, config.refresh_interval, currency]);
+  }, [holdings.length, config.api_provider, config.api_key, effectiveRefreshInterval, currency]);
 
   const handleAddHolding = (holding) => {
     const newHoldings = [...holdings, holding];

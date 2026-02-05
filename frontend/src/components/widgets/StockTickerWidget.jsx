@@ -1,5 +1,11 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import api from '../../services/api';
+
+// Minimum refresh intervals per provider (in seconds) to avoid rate limits
+const MIN_REFRESH_INTERVALS = {
+  alphavantage: 300,  // 25 requests/day = ~1 per 5 min with buffer
+  finnhub: 60,        // 60 calls/min, but be conservative
+};
 
 function formatCurrency(value) {
   if (value === null || value === undefined) return '—';
@@ -148,11 +154,19 @@ export default function StockTickerWidget({ config, onConfigChange }) {
     }
   };
 
+  // Calculate effective refresh interval based on provider limits
+  const effectiveRefreshInterval = useMemo(() => {
+    const provider = config.api_provider || 'alphavantage';
+    const minInterval = MIN_REFRESH_INTERVALS[provider] || 300;
+    const userInterval = config.refresh_interval || 300;
+    return Math.max(userInterval, minInterval);
+  }, [config.api_provider, config.refresh_interval]);
+
   useEffect(() => {
     fetchQuotes();
-    const interval = setInterval(fetchQuotes, (config.refresh_interval || 300) * 1000);
+    const interval = setInterval(fetchQuotes, effectiveRefreshInterval * 1000);
     return () => clearInterval(interval);
-  }, [holdings.length, config.api_provider, config.api_key, config.refresh_interval]);
+  }, [holdings.length, config.api_provider, config.api_key, effectiveRefreshInterval]);
 
   const handleAddHolding = (holding) => {
     const newHoldings = [...holdings, holding];
