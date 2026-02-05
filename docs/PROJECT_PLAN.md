@@ -72,7 +72,7 @@ personal-dash/
 - [x] 11. Package Tracking Widget
 - [x] 12. Stock Ticker Widget
 - [x] 13. Crypto Widget
-- [ ] 14. Weather Widget
+- [x] 14. Weather Widget
 - [ ] 15. Additional Widgets (Calendar, News, Fitness, Smart Home, GitHub)
 - [ ] 16. Email Integration for Package Tracking
 - [ ] 17. Deployment & Documentation

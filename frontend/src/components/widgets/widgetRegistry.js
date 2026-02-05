@@ -89,17 +89,25 @@ const widgetRegistry = {
     },
   },
   weather: {
-    component: () => import('./PlaceholderWidget'),
+    component: () => import('./WeatherWidget'),
     name: 'Weather',
-    description: 'Current weather conditions and forecast',
+    description: 'Current weather conditions and 5-day forecast',
     category: 'lifestyle',
-    defaultSize: { w: 2, h: 2 },
+    defaultSize: { w: 2, h: 3 },
     minSize: { w: 2, h: 2 },
     maxSize: { w: 4, h: 4 },
     hasDataEndpoint: true,
     configSchema: {
       title: { type: 'text', label: 'Title', default: 'Weather' },
-      location: { type: 'text', label: 'Location', placeholder: 'City name or zip code', required: true },
+      location: { type: 'text', label: 'Location', placeholder: 'City name (e.g., New York)', required: true },
+      api_provider: {
+        type: 'select', label: 'API Provider', default: 'openmeteo',
+        options: [
+          { value: 'openmeteo', label: 'Open-Meteo (free, no key)' },
+          { value: 'openweathermap', label: 'OpenWeatherMap (1000/day, key required)' },
+        ],
+      },
+      api_key: { type: 'text', label: 'API Key (for OpenWeatherMap)', placeholder: 'Your API key' },
       units: {
         type: 'select', label: 'Units', default: 'imperial',
         options: [
@@ -107,7 +115,7 @@ const widgetRegistry = {
           { value: 'metric', label: 'Celsius' },
         ],
       },
-      refresh_interval: { type: 'number', label: 'Refresh Interval (seconds)', default: 300, min: 30, max: 3600, step: 30 },
+      refresh_interval: { type: 'number', label: 'Refresh Interval (seconds)', default: 900, min: 300, max: 3600, step: 300 },
     },
   },
   fitness: {
