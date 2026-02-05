@@ -127,20 +127,89 @@ The frontend will be available at `http://localhost:5173`.
 
 The monitoring agent is a standalone Python script that runs on remote servers to collect system and Docker metrics. See [agent/README.md](agent/README.md) for deployment instructions.
 
-## Available Widgets
+## Widgets
 
-| Widget | Description | Status |
+### Server Monitor
+Monitor your servers' CPU, memory, disk usage, network I/O, and Docker containers.
+
+**Features:**
+- Real-time system metrics with color-coded progress bars (green/yellow/red)
+- Online/offline status indicator
+- Docker container list with CPU usage per container
+- Configurable refresh interval (minimum 10 seconds)
+
+**Setup:** Requires deploying the monitoring agent to each server. See [agent/README.md](agent/README.md).
+
+---
+
+### Package Tracker
+Track packages from multiple carriers with manual entry.
+
+**Supported Carriers:**
+- USPS, UPS, FedEx, Amazon, DHL, Other
+
+**Features:**
+- Add packages with tracking number and description
+- View delivery status and estimated delivery date
+- Toggle to show/hide delivered packages
+- Color-coded carrier badges
+
+---
+
+### Stock Ticker
+Track stock prices and calculate your portfolio value.
+
+**Features:**
+- Add holdings with symbol and number of shares
+- Real-time price and daily % change
+- Portfolio total value calculation
+- Remove holdings with one click
+
+**API Providers:**
+| Provider | Rate Limit | API Key |
 |---|---|---|
-| Server Monitor | CPU, memory, disk, Docker stats | In progress |
-| Package Tracker | USPS, UPS, FedEx, Amazon tracking | Planned |
-| Stock Ticker | Real-time stock prices | Planned |
-| Crypto Prices | Cryptocurrency tracking | Planned |
-| Weather | Current conditions and forecast | Planned |
-| Fitness Stats | Body weight tracking | Planned |
-| Calendar | Google Calendar integration | Planned |
-| News Headlines | RSS/News API aggregation | Planned |
-| Smart Home | Home Assistant integration | Planned |
-| GitHub Activity | Repository stats and activity | Planned |
+| Alpha Vantage (default) | 25 requests/day | Optional (demo key available) |
+| Finnhub | 60 requests/min | Required (free signup) |
+
+**Rate Limiting:** Widget enforces minimum refresh intervals based on provider:
+- Alpha Vantage: 5 minutes minimum
+- Finnhub: 1 minute minimum
+
+---
+
+### Crypto Prices
+Track cryptocurrency prices and calculate your portfolio value.
+
+**Features:**
+- Add holdings with coin and amount (supports decimals, e.g., 0.4931 BTC)
+- Real-time price and 24h % change
+- Portfolio total value in USD, EUR, or GBP
+- Remove holdings with one click
+
+**Supported Coins:** Bitcoin, Ethereum, Solana, Cardano, Dogecoin, Ripple, Polkadot, Litecoin
+
+**API Providers:**
+| Provider | Rate Limit | API Key |
+|---|---|---|
+| CoinGecko (default) | 10-30 requests/min | Not required |
+| CoinCap | 200 requests/min | Not required |
+
+**Rate Limiting:** Widget enforces minimum refresh intervals:
+- CoinGecko: 1 minute minimum
+- CoinCap: 30 seconds minimum
+
+---
+
+### Planned Widgets
+
+| Widget | Description |
+|---|---|
+| Weather | Current conditions and forecast |
+| Fitness Stats | Body weight tracking with charts |
+| Calendar | Google Calendar integration |
+| News Headlines | RSS/News API aggregation |
+| Smart Home | Home Assistant integration |
+| GitHub Activity | Repository stats and activity |
 
 ## Development
 
