@@ -67,7 +67,7 @@ personal-dash/
 - [x] 6. Widget Base Architecture
 - [x] 7. Server Monitoring Agent
 - [x] 8. Server Monitoring API
-- [ ] 9. Server Monitoring Dashboard Widget
+- [x] 9. Server Monitoring Dashboard Widget
 - [ ] 10. Package Tracking Backend
 - [ ] 11. Package Tracking Widget
 - [ ] 12. Stock Ticker Widget
