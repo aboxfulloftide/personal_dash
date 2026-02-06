@@ -185,6 +185,93 @@ WIDGET_TYPES: dict[str, WidgetTypeInfo] = {
             ),
         },
     ),
+    "news_headlines": WidgetTypeInfo(
+        type="news_headlines",
+        name="News Headlines",
+        description="Aggregated RSS news feeds with optional NewsAPI.org support",
+        category=WidgetCategory.LIFESTYLE,
+        default_size=WidgetSize(w=3, h=3),
+        min_size=WidgetSize(w=2, h=2),
+        max_size=WidgetSize(w=6, h=6),
+        has_data_endpoint=True,
+        config_schema={
+            "title": ConfigField(
+                type=ConfigFieldType.TEXT,
+                label="Title",
+                default="News Headlines",
+                placeholder="Widget title",
+            ),
+            "provider": ConfigField(
+                type=ConfigFieldType.SELECT,
+                label="Provider",
+                default="rss",
+                options=[
+                    {"value": "rss", "label": "RSS Feed"},
+                    {"value": "newsapi", "label": "NewsAPI.org"},
+                ],
+            ),
+            "source": ConfigField(
+                type=ConfigFieldType.TEXT,
+                label="News Sources (comma-separated)",
+                default="bbc,techcrunch",
+                placeholder="bbc,techcrunch,npr (available: bbc,npr,reuters,cnn,techcrunch,hackernews,custom)",
+            ),
+            "custom_url": ConfigField(
+                type=ConfigFieldType.TEXT,
+                label="Custom RSS URL",
+                default="",
+                placeholder="https://example.com/feed.xml",
+            ),
+            "api_key": ConfigField(
+                type=ConfigFieldType.TEXT,
+                label="NewsAPI.org Key (optional)",
+                default="",
+                placeholder="Your NewsAPI.org API key",
+            ),
+            "category": ConfigField(
+                type=ConfigFieldType.SELECT,
+                label="NewsAPI Category",
+                default="general",
+                options=[
+                    {"value": "general", "label": "General"},
+                    {"value": "business", "label": "Business"},
+                    {"value": "technology", "label": "Technology"},
+                    {"value": "sports", "label": "Sports"},
+                    {"value": "entertainment", "label": "Entertainment"},
+                    {"value": "science", "label": "Science"},
+                    {"value": "health", "label": "Health"},
+                ],
+            ),
+            "max_articles": ConfigField(
+                type=ConfigFieldType.NUMBER,
+                label="Max Articles",
+                default=10,
+                min=5,
+                max=50,
+                step=5,
+            ),
+            "include_keywords": ConfigField(
+                type=ConfigFieldType.TEXT,
+                label="Include Keywords (comma-separated)",
+                default="",
+                placeholder="tech, AI, startup (only show articles with these words)",
+            ),
+            "exclude_keywords": ConfigField(
+                type=ConfigFieldType.TEXT,
+                label="Exclude Keywords (comma-separated)",
+                default="",
+                placeholder="apple, politics (hide articles with these words)",
+            ),
+            "refresh_interval": ConfigField(
+                type=ConfigFieldType.NUMBER,
+                label="Refresh Interval (seconds)",
+                default=600,
+                min=300,
+                max=3600,
+                step=60,
+            ),
+        },
+    ),
 }
 
 

@@ -92,11 +92,11 @@ const widgetRegistry = {
   weather: {
     component: () => import('./WeatherWidget'),
     name: 'Weather',
-    description: 'Current weather conditions and 5-day forecast',
+    description: 'Current weather conditions, hourly and 5-day forecast',
     category: 'lifestyle',
-    defaultSize: { w: 2, h: 3 },
-    minSize: { w: 2, h: 2 },
-    maxSize: { w: 4, h: 4 },
+    defaultSize: { w: 3, h: 4 },
+    minSize: { w: 2, h: 3 },
+    maxSize: { w: 4, h: 5 },
     hasDataEndpoint: true,
     configSchema: {
       title: { type: 'text', label: 'Title', default: 'Weather' },
@@ -132,6 +132,50 @@ const widgetRegistry = {
       title: { type: 'text', label: 'Title', default: 'Fitness Stats' },
       days: { type: 'number', label: 'Days to Show', default: 30, min: 7, max: 365, step: 1 },
       goal_weight: { type: 'number', label: 'Goal Weight', min: 50, max: 500, step: 0.1 },
+    },
+  },
+  news_headlines: {
+    component: () => import('./NewsWidget'),
+    name: 'News Headlines',
+    description: 'Aggregated RSS news feeds with optional NewsAPI.org support',
+    category: 'lifestyle',
+    defaultSize: { w: 3, h: 3 },
+    minSize: { w: 2, h: 2 },
+    maxSize: { w: 6, h: 6 },
+    hasDataEndpoint: true,
+    configSchema: {
+      title: { type: 'text', label: 'Title', default: 'News Headlines' },
+      provider: {
+        type: 'select', label: 'Provider', default: 'rss',
+        options: [
+          { value: 'rss', label: 'RSS Feed' },
+          { value: 'newsapi', label: 'NewsAPI.org' },
+        ],
+      },
+      source: {
+        type: 'text',
+        label: 'News Sources (comma-separated)',
+        default: 'bbc,techcrunch',
+        placeholder: 'bbc,techcrunch,npr (available: bbc,npr,reuters,cnn,techcrunch,hackernews,custom)'
+      },
+      custom_url: { type: 'text', label: 'Custom RSS URL', placeholder: 'https://example.com/feed.xml' },
+      api_key: { type: 'text', label: 'NewsAPI.org Key (optional)', placeholder: 'Your NewsAPI.org API key' },
+      category: {
+        type: 'select', label: 'NewsAPI Category', default: 'general',
+        options: [
+          { value: 'general', label: 'General' },
+          { value: 'business', label: 'Business' },
+          { value: 'technology', label: 'Technology' },
+          { value: 'sports', label: 'Sports' },
+          { value: 'entertainment', label: 'Entertainment' },
+          { value: 'science', label: 'Science' },
+          { value: 'health', label: 'Health' },
+        ],
+      },
+      max_articles: { type: 'number', label: 'Max Articles', default: 10, min: 5, max: 50, step: 5 },
+      include_keywords: { type: 'text', label: 'Include Keywords (comma-separated)', placeholder: 'tech, AI, startup (only show articles with these words)' },
+      exclude_keywords: { type: 'text', label: 'Exclude Keywords (comma-separated)', placeholder: 'apple, politics (hide articles with these words)' },
+      refresh_interval: { type: 'number', label: 'Refresh Interval (seconds)', default: 600, min: 300, max: 3600, step: 60 },
     },
   },
 };
