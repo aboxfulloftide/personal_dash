@@ -8,6 +8,17 @@ from app.api.v1.deps import CurrentActiveUser
 router = APIRouter(prefix="/weather", tags=["Weather"])
 
 
+class LocationResult(BaseModel):
+    id: int
+    name: str
+    admin1: str | None  # State/Province
+    country: str
+    country_code: str
+    latitude: float
+    longitude: float
+    population: int | None
+
+
 class CurrentWeather(BaseModel):
     temp: float | None
     feels_like: float | None
@@ -84,8 +95,43 @@ WMO_CODE_TO_DESC = {
 }
 
 
+async def search_locations(query: str, count: int = 10) -> list[LocationResult]:
+    """Search for locations using Open-Meteo geocoding."""
+    url = f"https://geocoding-api.open-meteo.com/v1/search?name={query}&count={count}"
+    async with httpx.AsyncClient() as client:
+        resp = await client.get(url, timeout=10.0)
+        data = resp.json()
+
+    results = []
+    for item in data.get("results", []):
+        results.append(LocationResult(
+            id=item["id"],
+            name=item["name"],
+            admin1=item.get("admin1"),
+            country=item.get("country", ""),
+            country_code=item.get("country_code", ""),
+            latitude=item["latitude"],
+            longitude=item["longitude"],
+            population=item.get("population"),
+        ))
+    return results
+
+
 async def geocode_location(location: str) -> tuple[float, float, str]:
     """Convert location name to coordinates using Open-Meteo geocoding."""
+    # Check if location looks like coordinates (lat,lon)
+    if "," in location:
+        parts = location.split(",")
+        if len(parts) == 2:
+            try:
+                lat = float(parts[0].strip())
+                lon = float(parts[1].strip())
+                # Valid coordinate range check
+                if -90 <= lat <= 90 and -180 <= lon <= 180:
+                    return lat, lon, f"{lat:.2f}, {lon:.2f}"
+            except ValueError:
+                pass  # Not coordinates, continue with geocoding
+
     url = f"https://geocoding-api.open-meteo.com/v1/search?name={location}&count=1"
     async with httpx.AsyncClient() as client:
         resp = await client.get(url, timeout=10.0)
@@ -240,6 +286,23 @@ async def fetch_openweathermap(lat: float, lon: float, units: str, api_key: str)
             break
 
     return {"current": current, "forecast": forecast}
+
+
+@router.get("/locations/search", response_model=list[LocationResult])
+async def search_locations_endpoint(
+    current_user: CurrentActiveUser,
+    q: str = Query(..., min_length=2, description="Search query"),
+):
+    """Search for locations by name. Returns matching cities with coordinates."""
+    try:
+        results = await search_locations(q)
+    except Exception:
+        raise HTTPException(status_code=502, detail="Failed to search locations")
+
+    if not results:
+        raise HTTPException(status_code=404, detail=f"No locations found for: {q}")
+
+    return results
 
 
 @router.get("", response_model=WeatherResponse)

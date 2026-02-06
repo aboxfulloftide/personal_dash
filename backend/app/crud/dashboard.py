@@ -1,5 +1,6 @@
 from sqlalchemy.orm import Session
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 
 from app.models.widget import DashboardLayout
 
@@ -15,12 +16,27 @@ def save_dashboard(db: Session, user_id: int, layout_data: dict) -> DashboardLay
     dashboard = get_dashboard(db, user_id)
     if dashboard:
         dashboard.layout = layout_data
-    else:
+        db.commit()
+        db.refresh(dashboard)
+        return dashboard
+
+    # Try to insert new record
+    try:
         dashboard = DashboardLayout(user_id=user_id, layout=layout_data)
         db.add(dashboard)
-    db.commit()
-    db.refresh(dashboard)
-    return dashboard
+        db.commit()
+        db.refresh(dashboard)
+        return dashboard
+    except IntegrityError:
+        # Race condition: another request created the record first
+        db.rollback()
+        dashboard = get_dashboard(db, user_id)
+        if dashboard:
+            dashboard.layout = layout_data
+            db.commit()
+            db.refresh(dashboard)
+            return dashboard
+        raise
 
 
 def get_widget_from_dashboard(

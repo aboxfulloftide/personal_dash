@@ -104,10 +104,13 @@ export default function WeatherWidget({ config }) {
     return null;
   }
 
+  // Prefer saved display name over API-returned location
+  const displayLocation = config.location_display || data.location;
+
   return (
     <div className="h-full flex flex-col">
       <div className="text-xs text-gray-500 dark:text-gray-400 text-right mb-1">
-        {data.location}
+        {displayLocation}
       </div>
       <div className="flex-1 flex flex-col justify-center">
         <CurrentConditions current={data.current} units={config.units || 'imperial'} />

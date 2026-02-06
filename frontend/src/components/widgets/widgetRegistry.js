@@ -47,9 +47,10 @@ const widgetRegistry = {
     configSchema: {
       title: { type: 'text', label: 'Title', default: 'Stock Ticker' },
       api_provider: {
-        type: 'select', label: 'API Provider', default: 'alphavantage',
+        type: 'select', label: 'API Provider', default: 'yahoo',
         options: [
-          { value: 'alphavantage', label: 'Alpha Vantage (25/day free)' },
+          { value: 'yahoo', label: 'Yahoo Finance (free, no key)' },
+          { value: 'alphavantage', label: 'Alpha Vantage (25/day, key required)' },
           { value: 'finnhub', label: 'Finnhub (60/min, key required)' },
         ],
       },
@@ -99,7 +100,7 @@ const widgetRegistry = {
     hasDataEndpoint: true,
     configSchema: {
       title: { type: 'text', label: 'Title', default: 'Weather' },
-      location: { type: 'text', label: 'Location', placeholder: 'City name (e.g., New York)', required: true },
+      location: { type: 'location_search', label: 'Location', placeholder: 'Search for a city...', required: true },
       api_provider: {
         type: 'select', label: 'API Provider', default: 'openmeteo',
         options: [

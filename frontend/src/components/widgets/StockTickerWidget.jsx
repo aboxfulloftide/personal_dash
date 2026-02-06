@@ -3,6 +3,7 @@ import api from '../../services/api';
 
 // Minimum refresh intervals per provider (in seconds) to avoid rate limits
 const MIN_REFRESH_INTERVALS = {
+  yahoo: 60,          // No official limit, be conservative
   alphavantage: 300,  // 25 requests/day = ~1 per 5 min with buffer
   finnhub: 60,        // 60 calls/min, but be conservative
 };
@@ -135,7 +136,7 @@ export default function StockTickerWidget({ config, onConfigChange }) {
     try {
       const params = {
         symbols,
-        provider: config.api_provider || 'alphavantage',
+        provider: config.api_provider || 'yahoo',
       };
       if (config.api_key) {
         params.api_key = config.api_key;
@@ -156,8 +157,8 @@ export default function StockTickerWidget({ config, onConfigChange }) {
 
   // Calculate effective refresh interval based on provider limits
   const effectiveRefreshInterval = useMemo(() => {
-    const provider = config.api_provider || 'alphavantage';
-    const minInterval = MIN_REFRESH_INTERVALS[provider] || 300;
+    const provider = config.api_provider || 'yahoo';
+    const minInterval = MIN_REFRESH_INTERVALS[provider] || 60;
     const userInterval = config.refresh_interval || 300;
     return Math.max(userInterval, minInterval);
   }, [config.api_provider, config.refresh_interval]);

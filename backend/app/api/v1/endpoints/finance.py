@@ -36,6 +36,33 @@ class CryptoResponse(BaseModel):
 # =============================================================================
 
 
+async def fetch_yahoo(symbol: str) -> StockQuote:
+    """Fetch stock quote from Yahoo Finance (no API key required)."""
+    url = f"https://query1.finance.yahoo.com/v8/finance/chart/{symbol}"
+    headers = {"User-Agent": "Mozilla/5.0"}
+    async with httpx.AsyncClient() as client:
+        resp = await client.get(url, headers=headers, timeout=10.0)
+        data = resp.json()
+
+    try:
+        result = data.get("chart", {}).get("result", [])
+        if not result:
+            return StockQuote(symbol=symbol, price=None, change_percent=None)
+
+        meta = result[0].get("meta", {})
+        price = meta.get("regularMarketPrice")
+        prev_close = meta.get("previousClose")
+
+        if price and prev_close and prev_close > 0:
+            change_pct = ((price - prev_close) / prev_close) * 100
+        else:
+            change_pct = None
+
+        return StockQuote(symbol=symbol, price=price, change_percent=round(change_pct, 2) if change_pct else None)
+    except (ValueError, TypeError, KeyError):
+        return StockQuote(symbol=symbol, price=None, change_percent=None)
+
+
 async def fetch_alphavantage(symbol: str, api_key: str) -> StockQuote:
     """Fetch stock quote from Alpha Vantage."""
     url = f"https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol={symbol}&apikey={api_key}"
@@ -85,7 +112,7 @@ async def fetch_finnhub(symbol: str, api_key: str) -> StockQuote:
 async def get_stock_quotes(
     current_user: CurrentActiveUser,
     symbols: str = Query(..., description="Comma-separated stock symbols"),
-    provider: str = Query("alphavantage", description="API provider"),
+    provider: str = Query("yahoo", description="API provider"),
     api_key: str | None = Query(None, description="Optional API key"),
 ):
     """Fetch stock quotes from external API."""
@@ -98,8 +125,10 @@ async def get_stock_quotes(
         try:
             if provider == "finnhub":
                 quote = await fetch_finnhub(symbol, api_key or "")
-            else:  # alphavantage default
+            elif provider == "alphavantage":
                 quote = await fetch_alphavantage(symbol, api_key or ALPHAVANTAGE_DEMO_KEY)
+            else:  # yahoo default
+                quote = await fetch_yahoo(symbol)
             quotes.append(quote)
         except Exception:
             quotes.append(StockQuote(symbol=symbol, price=None, change_percent=None))

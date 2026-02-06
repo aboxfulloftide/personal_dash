@@ -1,7 +1,115 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { getWidget, getWidgetConfigSchema } from './widgetRegistry';
+import api from '../../services/api';
 
-function ConfigField({ name, field, value, onChange }) {
+function LocationSearchField({ name, field, value, onChange }) {
+  const [query, setQuery] = useState('');
+  const [results, setResults] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [showDropdown, setShowDropdown] = useState(false);
+
+  // Debounced search
+  useEffect(() => {
+    if (query.length < 2) {
+      setResults([]);
+      return;
+    }
+
+    const timer = setTimeout(async () => {
+      setLoading(true);
+      try {
+        const response = await api.get('/weather/locations/search', { params: { q: query } });
+        setResults(response.data);
+        setShowDropdown(true);
+      } catch (err) {
+        setResults([]);
+      } finally {
+        setLoading(false);
+      }
+    }, 300);
+
+    return () => clearTimeout(timer);
+  }, [query]);
+
+  const handleSelect = (location) => {
+    // Store coordinates as the location value for accurate geocoding
+    const locationValue = `${location.latitude},${location.longitude}`;
+    const displayName = location.admin1
+      ? `${location.name}, ${location.admin1}`
+      : `${location.name}, ${location.country}`;
+
+    onChange(name, locationValue);
+    onChange(`${name}_display`, displayName);
+    setQuery(displayName);
+    setShowDropdown(false);
+  };
+
+  // Initialize query from display name if we have a saved value
+  useEffect(() => {
+    if (value && !query) {
+      // Check if there's a display name saved
+      // This will be handled by the parent passing the display value
+    }
+  }, [value, query]);
+
+  const id = `widget-config-${name}`;
+  const displayValue = value ? (field.displayValue || query || value) : '';
+
+  return (
+    <div className="relative">
+      <label htmlFor={id} className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+        {field.label} {field.required && <span className="text-red-500">*</span>}
+      </label>
+      <input
+        id={id}
+        type="text"
+        value={query || displayValue}
+        placeholder={field.placeholder || 'Search for a city...'}
+        onChange={(e) => {
+          setQuery(e.target.value);
+          if (e.target.value.length < 2) {
+            setShowDropdown(false);
+          }
+        }}
+        onFocus={() => results.length > 0 && setShowDropdown(true)}
+        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+      />
+      {loading && (
+        <div className="absolute right-3 top-9">
+          <div className="animate-spin h-4 w-4 border-2 border-blue-500 border-t-transparent rounded-full"></div>
+        </div>
+      )}
+      {showDropdown && results.length > 0 && (
+        <div className="absolute z-10 w-full mt-1 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-lg max-h-60 overflow-auto">
+          {results.map((location) => (
+            <button
+              key={location.id}
+              type="button"
+              onClick={() => handleSelect(location)}
+              className="w-full px-3 py-2 text-left text-sm hover:bg-gray-100 dark:hover:bg-gray-600 text-gray-900 dark:text-white"
+            >
+              <div className="font-medium">
+                {location.name}
+                {location.admin1 && <span className="text-gray-500 dark:text-gray-400">, {location.admin1}</span>}
+              </div>
+              <div className="text-xs text-gray-500 dark:text-gray-400">
+                {location.country}
+                {location.population && ` • Pop: ${location.population.toLocaleString()}`}
+              </div>
+            </button>
+          ))}
+        </div>
+      )}
+      {value && (
+        <p className="mt-1 text-xs text-green-600 dark:text-green-400">
+          Location set: {field.displayValue || value}
+        </p>
+      )}
+    </div>
+  );
+}
+
+function ConfigField({ name, field, value, onChange, config }) {
   const id = `widget-config-${name}`;
 
   switch (field.type) {
@@ -87,6 +195,16 @@ function ConfigField({ name, field, value, onChange }) {
         </div>
       );
 
+    case 'location_search':
+      return (
+        <LocationSearchField
+          name={name}
+          field={{ ...field, displayValue: config[`${name}_display`] }}
+          value={value}
+          onChange={onChange}
+        />
+      );
+
     default:
       return null;
   }
@@ -139,6 +257,7 @@ export default function WidgetSettingsModal({ isOpen, widgetId, widgetType, curr
                 field={field}
                 value={config[name]}
                 onChange={handleFieldChange}
+                config={config}
               />
             ))
           )}
