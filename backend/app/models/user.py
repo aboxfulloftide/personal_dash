@@ -24,3 +24,4 @@ class User(Base):
     packages = relationship("Package", back_populates="user", cascade="all, delete-orphan")
     weight_entries = relationship("WeightEntry", back_populates="user", cascade="all, delete-orphan")
     email_accounts = relationship("EmailAccount", back_populates="user", cascade="all, delete-orphan")
+    email_credential = relationship("EmailCredential", back_populates="user", uselist=False, cascade="all, delete-orphan")

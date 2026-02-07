@@ -1,6 +1,8 @@
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, HTTPException, Query, status, Body
+from pydantic import BaseModel
 
 from app.api.v1.deps import CurrentActiveUser, DbSession
+from app.api.v1.endpoints.email_scanner import scan_imap_email
 from app.crud.package import (
     add_event,
     create_package,
@@ -106,3 +108,88 @@ def add_tracking_event(
 
     event = add_event(db, package_id, event_in)
     return PackageEventResponse.model_validate(event)
+
+
+class EmailScanRequest(BaseModel):
+    imap_server: str
+    imap_port: int = 993
+    email_address: str
+    password: str
+    days_back: int = 30
+
+
+class EmailScanResult(BaseModel):
+    packages_added: int
+    packages_skipped: int  # Already exist
+    tracking_numbers_found: list[str]
+    emails_scanned: int
+
+
+@router.post("/scan-email", response_model=EmailScanResult)
+async def scan_email_and_add_packages(
+    scan_request: EmailScanRequest,
+    db: DbSession,
+    current_user: CurrentActiveUser,
+):
+    """
+    Scan email for tracking numbers and automatically add them as packages.
+
+    For Gmail:
+    - imap_server: imap.gmail.com
+    - Generate App Password at myaccount.google.com/apppasswords
+    - Use the app password, not your regular password
+
+    For Outlook:
+    - imap_server: outlook.office365.com
+
+    For Yahoo:
+    - imap_server: imap.mail.yahoo.com
+    """
+
+    # Scan email for tracking numbers
+    scan_result = await scan_imap_email(
+        imap_server=scan_request.imap_server,
+        imap_port=scan_request.imap_port,
+        email_address=scan_request.email_address,
+        password=scan_request.password,
+        days_back=scan_request.days_back,
+    )
+
+    # Get existing package tracking numbers for this user
+    existing_packages = get_packages(db, current_user.id, include_delivered=False)
+    existing_tracking_numbers = {pkg.tracking_number.upper() for pkg in existing_packages}
+
+    packages_added = 0
+    packages_skipped = 0
+    tracking_numbers_found = []
+
+    # Add each found tracking number as a package (if not already exists)
+    for tracking_info in scan_result.tracking_numbers:
+        tracking_number = tracking_info.tracking_number
+        tracking_numbers_found.append(tracking_number)
+
+        # Skip if already tracking this package
+        if tracking_number.upper() in existing_tracking_numbers:
+            packages_skipped += 1
+            continue
+
+        # Create package
+        try:
+            package_data = PackageCreate(
+                tracking_number=tracking_number,
+                carrier=tracking_info.carrier,
+                description=f"Auto-added from email: {tracking_info.found_in_subject[:50]}",
+                status="in_transit",
+            )
+            create_package(db, current_user.id, package_data)
+            packages_added += 1
+        except Exception:
+            # Skip if creation fails (e.g., duplicate tracking number race condition)
+            packages_skipped += 1
+
+    return EmailScanResult(
+        packages_added=packages_added,
+        packages_skipped=packages_skipped,
+        tracking_numbers_found=tracking_numbers_found,
+        emails_scanned=scan_result.emails_scanned,
+    )
