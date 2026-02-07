@@ -178,6 +178,36 @@ const widgetRegistry = {
       refresh_interval: { type: 'number', label: 'Refresh Interval (seconds)', default: 600, min: 300, max: 3600, step: 60 },
     },
   },
+  calendar: {
+    component: () => import('./CalendarWidget'),
+    name: 'Calendar',
+    description: 'Display events from ICS/iCal calendars with multiple views',
+    category: 'lifestyle',
+    defaultSize: { w: 3, h: 3 },
+    minSize: { w: 2, h: 2 },
+    maxSize: { w: 6, h: 6 },
+    hasDataEndpoint: true,
+    configSchema: {
+      title: { type: 'text', label: 'Title', default: 'Calendar' },
+      calendars: {
+        type: 'text',
+        label: 'Calendar URLs (comma-separated ICS/iCal URLs)',
+        placeholder: 'https://calendar.google.com/calendar/ical/...',
+        required: true
+      },
+      default_view: {
+        type: 'select',
+        label: 'Default View',
+        default: 'week',
+        options: [
+          { value: 'today', label: 'Today' },
+          { value: 'week', label: 'This Week' },
+          { value: 'month', label: 'Month' },
+        ],
+      },
+      refresh_interval: { type: 'number', label: 'Refresh Interval (seconds)', default: 600, min: 300, max: 3600, step: 60 },
+    },
+  },
 };
 
 const fallbackWidget = {

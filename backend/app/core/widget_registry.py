@@ -272,6 +272,49 @@ WIDGET_TYPES: dict[str, WidgetTypeInfo] = {
             ),
         },
     ),
+    "calendar": WidgetTypeInfo(
+        type="calendar",
+        name="Calendar",
+        description="Display events from ICS/iCal calendars with multiple views",
+        category=WidgetCategory.LIFESTYLE,
+        default_size=WidgetSize(w=3, h=3),
+        min_size=WidgetSize(w=2, h=2),
+        max_size=WidgetSize(w=6, h=6),
+        has_data_endpoint=True,
+        config_schema={
+            "title": ConfigField(
+                type=ConfigFieldType.TEXT,
+                label="Title",
+                default="Calendar",
+                placeholder="Widget title",
+            ),
+            "calendars": ConfigField(
+                type=ConfigFieldType.TEXT,
+                label="Calendar URLs (comma-separated ICS/iCal URLs)",
+                default="",
+                placeholder="https://calendar.google.com/calendar/ical/...",
+                required=True,
+            ),
+            "default_view": ConfigField(
+                type=ConfigFieldType.SELECT,
+                label="Default View",
+                default="week",
+                options=[
+                    {"value": "today", "label": "Today"},
+                    {"value": "week", "label": "This Week"},
+                    {"value": "month", "label": "Month"},
+                ],
+            ),
+            "refresh_interval": ConfigField(
+                type=ConfigFieldType.NUMBER,
+                label="Refresh Interval (seconds)",
+                default=600,
+                min=300,
+                max=3600,
+                step=60,
+            ),
+        },
+    ),
 }
 
 
