@@ -2,6 +2,7 @@ import asyncio
 import httpx
 from datetime import datetime, timedelta
 from icalendar import Calendar
+import recurring_ical_events
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 from typing import Optional
@@ -75,8 +76,8 @@ def cache_calendar(cache_key: str, response: CalendarResponse):
     _calendar_cache[cache_key] = (response, datetime.now())
 
 
-async def fetch_ics_calendar(url: str, source_name: str, source_index: int) -> list[CalendarEvent]:
-    """Fetch and parse ICS calendar from URL."""
+async def fetch_ics_calendar(url: str, source_name: str, source_index: int, start_date: datetime, end_date: datetime) -> list[CalendarEvent]:
+    """Fetch and parse ICS calendar from URL, expanding recurring events."""
     try:
         async with httpx.AsyncClient() as client:
             resp = await client.get(url, timeout=15.0, follow_redirects=True)
@@ -93,8 +94,13 @@ async def fetch_ics_calendar(url: str, source_name: str, source_index: int) -> l
         raise HTTPException(status_code=502, detail=f"Failed to parse calendar {source_name}: {str(e)}")
 
     events = []
-    for component in cal.walk():
-        if component.name == "VEVENT":
+
+    try:
+        # Use recurring_ical_events to expand recurring events within the date range
+        # Convert datetime to date for the library
+        recurring_events = recurring_ical_events.of(cal).between(start_date, end_date)
+
+        for component in recurring_events:
             try:
                 # Get event properties
                 summary = str(component.get('summary', 'Untitled'))
@@ -146,6 +152,9 @@ async def fetch_ics_calendar(url: str, source_name: str, source_index: int) -> l
             except Exception as e:
                 # Skip malformed events
                 continue
+
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Failed to expand recurring events for {source_name}: {str(e)}")
 
     return events
 
@@ -207,6 +216,27 @@ async def get_calendar(
     Events are color-coded by source (calendar index).
     """
 
+    # DEBUG: Log API call details for Insomnia testing
+    import logging
+    logger = logging.getLogger(__name__)
+    logger.info("=" * 80)
+    logger.info("CALENDAR API CALL - Copy this for Insomnia:")
+    logger.info(f"Method: GET")
+    logger.info(f"URL: http://localhost:8000/api/v1/calendar")
+    logger.info(f"Query Parameters:")
+    logger.info(f"  calendars: {calendars}")
+    logger.info(f"  view: {view}")
+    if month:
+        logger.info(f"  month: {month}")
+    logger.info(f"Headers:")
+    logger.info(f"  Authorization: Bearer <your_token>")
+    logger.info(f"\nFull URL for Insomnia:")
+    full_url = f"http://localhost:8000/api/v1/calendar?calendars={calendars}&view={view}"
+    if month:
+        full_url += f"&month={month}"
+    logger.info(full_url)
+    logger.info("=" * 80)
+
     # Generate cache key
     cache_key = get_cache_key(calendars, view, month)
 
@@ -264,10 +294,10 @@ async def get_calendar(
     else:
         raise HTTPException(status_code=400, detail="Invalid view (use 'today', 'week', or 'month')")
 
-    # Fetch all calendars in parallel
+    # Fetch all calendars in parallel, passing date range for recurring event expansion
     try:
         tasks = [
-            fetch_ics_calendar(url, name, idx)
+            fetch_ics_calendar(url, name, idx, start_date, end_date)
             for url, name, idx in calendar_list
         ]
         results = await asyncio.gather(*tasks, return_exceptions=True)
@@ -295,6 +325,18 @@ async def get_calendar(
         end_date=end_date.date().isoformat(),
         cached=False,
     )
+
+    # DEBUG: Log response summary
+    logger.info(f"RESPONSE: Returning {len(filtered_events)} events for {start_date.date()} to {end_date.date()}")
+    if filtered_events:
+        logger.info(f"Events returned:")
+        for event in filtered_events[:10]:  # Show first 10
+            logger.info(f"  - {event.title}: {event.start} (source: {event.source})")
+        if len(filtered_events) > 10:
+            logger.info(f"  ... and {len(filtered_events) - 10} more events")
+    else:
+        logger.info(f"  No events found in date range")
+    logger.info("=" * 80)
 
     # Cache the response
     cache_calendar(cache_key, response)

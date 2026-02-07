@@ -236,7 +236,9 @@ function ViewTabs({ currentView, onViewChange }) {
 }
 
 function MonthSelector({ currentMonth, onMonthChange }) {
-  const monthName = new Date(currentMonth + '-01').toLocaleDateString('en-US', {
+  // Parse year and month to avoid timezone issues
+  const [year, month] = currentMonth.split('-').map(Number);
+  const monthName = new Date(year, month - 1, 1).toLocaleDateString('en-US', {
     month: 'long',
     year: 'numeric',
   });
