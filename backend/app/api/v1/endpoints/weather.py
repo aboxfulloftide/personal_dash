@@ -27,17 +27,27 @@ class CurrentWeather(BaseModel):
     icon: str
 
 
+class HourlyForecast(BaseModel):
+    time: str  # "9 AM", "12 PM", etc.
+    temp: float | None
+    precip_chance: int | None  # percentage
+    icon: str
+
+
 class ForecastDay(BaseModel):
-    day: str
+    date: str  # ISO date "2026-02-06"
+    day: str   # "Thu", "Fri", etc.
     high: float | None
     low: float | None
     icon: str
+    hourly: list[HourlyForecast] = []
 
 
 class WeatherResponse(BaseModel):
     location: str
     current: CurrentWeather
     forecast: list[ForecastDay]
+    today_hourly: list[HourlyForecast] = []  # Remaining hours for today
 
 
 # Weather code mappings for Open-Meteo
@@ -167,6 +177,7 @@ async def fetch_openmeteo(lat: float, lon: float, units: str) -> dict:
         f"latitude={lat}&longitude={lon}"
         f"&current=temperature_2m,relative_humidity_2m,apparent_temperature,weather_code"
         f"&daily=weather_code,temperature_2m_max,temperature_2m_min"
+        f"&hourly=temperature_2m,precipitation_probability,weather_code"
         f"&temperature_unit={temp_unit}"
         f"&timezone=auto"
         f"&forecast_days=5"
@@ -178,6 +189,7 @@ async def fetch_openmeteo(lat: float, lon: float, units: str) -> dict:
 
     current_data = data.get("current", {})
     daily_data = data.get("daily", {})
+    hourly_data = data.get("hourly", {})
 
     weather_code = current_data.get("weather_code", 0)
 
@@ -189,6 +201,37 @@ async def fetch_openmeteo(lat: float, lon: float, units: str) -> dict:
         icon=WMO_CODE_TO_ICON.get(weather_code, "cloudy"),
     )
 
+    # Parse hourly data and group by date
+    hourly_times = hourly_data.get("time", [])
+    hourly_temps = hourly_data.get("temperature_2m", [])
+    hourly_precip = hourly_data.get("precipitation_probability", [])
+    hourly_codes = hourly_data.get("weather_code", [])
+
+    # Group hourly data by date
+    hourly_by_date: dict[str, list[HourlyForecast]] = {}
+    now = datetime.now()
+
+    for i, time_str in enumerate(hourly_times):
+        dt = datetime.strptime(time_str, "%Y-%m-%dT%H:%M")
+        date_key = dt.strftime("%Y-%m-%d")
+
+        # Only include every 2 hours for cleaner display
+        if dt.hour % 2 != 0:
+            continue
+
+        code = hourly_codes[i] if i < len(hourly_codes) else 0
+        hourly_item = HourlyForecast(
+            time=dt.strftime("%-I %p"),  # "9 AM", "12 PM"
+            temp=hourly_temps[i] if i < len(hourly_temps) else None,
+            precip_chance=hourly_precip[i] if i < len(hourly_precip) else None,
+            icon=WMO_CODE_TO_ICON.get(code, "cloudy"),
+        )
+
+        if date_key not in hourly_by_date:
+            hourly_by_date[date_key] = []
+        hourly_by_date[date_key].append(hourly_item)
+
+    # Build forecast with hourly data
     forecast = []
     times = daily_data.get("time", [])
     highs = daily_data.get("temperature_2m_max", [])
@@ -199,13 +242,31 @@ async def fetch_openmeteo(lat: float, lon: float, units: str) -> dict:
         date = datetime.strptime(date_str, "%Y-%m-%d")
         code = codes[i] if i < len(codes) else 0
         forecast.append(ForecastDay(
+            date=date_str,
             day=date.strftime("%a"),
             high=highs[i] if i < len(highs) else None,
             low=lows[i] if i < len(lows) else None,
             icon=WMO_CODE_TO_ICON.get(code, "cloudy"),
+            hourly=hourly_by_date.get(date_str, []),
         ))
 
-    return {"current": current, "forecast": forecast}
+    # Get remaining hours for today (from current hour onwards)
+    today_str = now.strftime("%Y-%m-%d")
+    current_hour = now.hour
+    today_hourly = []
+
+    for item in hourly_by_date.get(today_str, []):
+        # Parse hour from time string like "9 AM" or "12 PM"
+        hour_str = item.time
+        try:
+            item_dt = datetime.strptime(hour_str, "%I %p")
+            item_hour = item_dt.hour
+            if item_hour >= current_hour:
+                today_hourly.append(item)
+        except ValueError:
+            today_hourly.append(item)  # Include if parsing fails
+
+    return {"current": current, "forecast": forecast, "today_hourly": today_hourly}
 
 
 async def fetch_openweathermap(lat: float, lon: float, units: str, api_key: str) -> dict:
@@ -335,4 +396,5 @@ async def get_weather(
         location=display_name,
         current=result["current"],
         forecast=result["forecast"],
+        today_hourly=result.get("today_hourly", []),
     )

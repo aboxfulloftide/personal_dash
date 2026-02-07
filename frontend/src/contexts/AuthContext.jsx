@@ -28,6 +28,15 @@ export function AuthProvider({ children }) {
     fetchUser();
   }, [fetchUser]);
 
+  // Update document title based on user
+  useEffect(() => {
+    if (user?.display_name) {
+      document.title = `${user.display_name}'s Dash`;
+    } else {
+      document.title = 'Personal Dash';
+    }
+  }, [user]);
+
   const login = async (email, password) => {
     const response = await api.post('/auth/login', { email, password });
     localStorage.setItem('access_token', response.data.access_token);

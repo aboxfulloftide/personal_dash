@@ -21,7 +21,7 @@ class EmailCredential(Base):
 
     # Auto-scan settings
     enabled = Column(Boolean, default=True, nullable=False)
-    scan_interval_hours = Column(Integer, default=6, nullable=False)  # How often to scan
+    scan_interval_hours = Column(Integer, default=1, nullable=False)  # How often to scan
     days_to_scan = Column(Integer, default=30, nullable=False)  # How many days back to look
 
     # Tracking

@@ -6,8 +6,21 @@ from datetime import datetime
 
 
 def get_email_credential(db: Session, user_id: int) -> EmailCredential | None:
-    """Get email credentials for a user."""
+    """Get email credentials for a user (returns first one for backward compatibility)."""
     return db.query(EmailCredential).filter(EmailCredential.user_id == user_id).first()
+
+
+def get_email_credentials(db: Session, user_id: int) -> list[EmailCredential]:
+    """Get all email credentials for a user."""
+    return db.query(EmailCredential).filter(EmailCredential.user_id == user_id).all()
+
+
+def get_email_credential_by_id(db: Session, credential_id: int, user_id: int) -> EmailCredential | None:
+    """Get a specific email credential by ID for a user."""
+    return db.query(EmailCredential).filter(
+        EmailCredential.id == credential_id,
+        EmailCredential.user_id == user_id
+    ).first()
 
 
 def create_email_credential(
