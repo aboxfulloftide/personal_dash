@@ -55,7 +55,9 @@ function PackageCard({ pkg, onDelete }) {
       usps: `https://tools.usps.com/go/TrackConfirmAction?tLabels=${trackingNumber}`,
       ups: `https://www.ups.com/track?tracknum=${trackingNumber}`,
       fedex: `https://www.fedex.com/fedextrack/?tracknumbers=${trackingNumber}`,
-      amazon: `https://track.amazon.com/tracking/${trackingNumber}`,
+      amazon: pkg.tracking_number.includes('-')
+        ? `https://www.amazon.com/progress-tracker/package/ref=ppx_yo_dt_b_track_package?_encoding=UTF8&orderId=${pkg.tracking_number}`
+        : `https://track.amazon.com/tracking/${trackingNumber}`,
       dhl: `https://www.dhl.com/en/express/tracking.html?AWB=${trackingNumber}`,
     };
 

@@ -47,7 +47,7 @@ export default function DashboardPage() {
         onAddWidget={() => setShowAddModal(true)}
       />
 
-      <main className="max-w-7xl mx-auto px-4 py-6">
+      <main className="w-full px-4 py-6">
         {widgets.length === 0 ? (
           <div className="text-center py-12">
             <h2 className="text-xl font-semibold text-gray-700 dark:text-gray-300 mb-2">

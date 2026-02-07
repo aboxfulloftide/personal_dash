@@ -177,7 +177,7 @@ async def scan_email_and_add_packages(
         try:
             package_data = PackageCreate(
                 tracking_number=tracking_number,
-                carrier=tracking_info.carrier,
+                carrier=tracking_info.carrier.lower(),
                 description=f"Auto-added from email: {tracking_info.found_in_subject[:50]}",
                 status="in_transit",
             )

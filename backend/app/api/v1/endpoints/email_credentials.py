@@ -155,9 +155,12 @@ async def manual_scan(
             days_back=credential.days_to_scan,
         )
 
-        # Get existing packages for this user
-        existing_packages = get_packages(db, current_user.id, include_delivered=False)
-        existing_tracking_numbers = {pkg.tracking_number.upper() for pkg in existing_packages}
+        # Get existing packages for this user (including dismissed ones to avoid re-adding)
+        from sqlalchemy import select
+        from app.models.package import Package
+        all_packages_query = select(Package).where(Package.user_id == current_user.id)
+        all_packages = db.execute(all_packages_query).scalars().all()
+        existing_tracking_numbers = {pkg.tracking_number.upper() for pkg in all_packages}
 
         packages_added = 0
 

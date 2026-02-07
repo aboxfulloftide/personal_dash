@@ -46,6 +46,10 @@ TRACKING_PATTERNS = {
     "Amazon": [
         r'\b(TBA\d{12})\b',  # TBA followed by 12 digits
         r'\b(TBA\d{10})\b',  # TBA followed by 10 digits
+        r'\b(TBA\d{9})\b',   # TBA followed by 9 digits (Amazon Logistics)
+        r'\b(TBA[A-Z0-9]{10,12})\b',  # TBA with alphanumeric
+        r'\b([A-Z]{2}\d{12,15}[A-Z]{2})\b',  # Amazon International format
+        r'\b(AMA[A-Z0-9]{9,12})\b',  # AMA prefix format
     ],
 }
 
@@ -58,6 +62,17 @@ def extract_tracking_numbers(text: str) -> list[tuple[str, str]]:
     # Convert to uppercase for matching
     text_upper = text.upper()
 
+    # Extract Amazon order/shipment IDs from tracking URLs
+    # Amazon often doesn't show tracking numbers, only order IDs in URLs
+    amazon_url_pattern = r'amazon\.com/(?:progress-tracker/package|gp/css/shiptrack/view\.html)[^\s]*?(?:orderId|orderID)=([0-9\-]+)'
+    amazon_matches = re.finditer(amazon_url_pattern, text, re.IGNORECASE)
+    for match in amazon_matches:
+        order_id = match.group(1)
+        # Use order ID as tracking identifier for Amazon
+        if order_id not in seen:
+            seen.add(order_id)
+            found.append((order_id, 'Amazon'))
+
     # Try each carrier's patterns
     for carrier, patterns in TRACKING_PATTERNS.items():
         for pattern in patterns:
@@ -67,6 +82,30 @@ def extract_tracking_numbers(text: str) -> list[tuple[str, str]]:
                 if tracking not in seen:
                     seen.add(tracking)
                     found.append((tracking, carrier))
+
+    # Additional heuristic: look for common tracking number formats after keywords
+    # This catches numbers that might not match strict patterns
+    tracking_keywords = r'(?:tracking|track|shipment|package)\s*(?:number|#|id)?[:\s]+([A-Z0-9\-]{8,30})'
+    keyword_matches = re.finditer(tracking_keywords, text_upper, re.IGNORECASE)
+    for match in keyword_matches:
+        potential_tracking = match.group(1).strip()
+        # Remove common separators
+        potential_tracking = potential_tracking.replace('-', '').replace(' ', '')
+        if len(potential_tracking) >= 8 and potential_tracking not in seen:
+            # Try to guess carrier based on format
+            carrier = 'other'
+            if potential_tracking.startswith('1Z'):
+                carrier = 'UPS'
+            elif potential_tracking.startswith('TBA'):
+                carrier = 'Amazon'
+            elif potential_tracking.startswith(('94', '92', '93', '82')):
+                carrier = 'USPS'
+            elif potential_tracking.isdigit() and len(potential_tracking) in [12, 15, 20]:
+                carrier = 'FedEx'
+
+            if potential_tracking not in seen:
+                seen.add(potential_tracking)
+                found.append((potential_tracking, carrier))
 
     return found
 
@@ -88,6 +127,7 @@ def decode_email_subject(subject):
 def extract_email_body(msg):
     """Extract plain text body from email message."""
     body = ""
+    html_body = ""
 
     if msg.is_multipart():
         for part in msg.walk():
@@ -101,11 +141,21 @@ def extract_email_body(msg):
                     break
                 except:
                     pass
+            # Also get HTML if no plain text found
+            elif content_type == "text/html" and "attachment" not in content_disposition and not body:
+                try:
+                    html_body = part.get_payload(decode=True).decode(errors='ignore')
+                except:
+                    pass
     else:
         try:
             body = msg.get_payload(decode=True).decode(errors='ignore')
         except:
             pass
+
+    # If no plain text found, use HTML (will have tags but tracking numbers should still be extractable)
+    if not body and html_body:
+        body = html_body
 
     return body
 
@@ -141,12 +191,16 @@ async def scan_imap_email(
             since_date = datetime.now() - timedelta(days=days_back)
 
             # Search criteria: emails from shipping carriers or with shipping keywords
+            # Use broader search to catch all possible shipping emails
             search_criteria = [
                 'OR',
-                ['OR', ['FROM', 'amazon'], ['FROM', 'shopify']],
                 ['OR',
-                    ['OR', ['FROM', 'ups.com'], ['FROM', 'fedex.com']],
-                    ['OR', ['FROM', 'usps.com'], ['SUBJECT', 'tracking']]
+                    ['OR', ['FROM', 'amazon'], ['FROM', 'shopify']],
+                    ['OR', ['FROM', 'ups'], ['FROM', 'fedex']]
+                ],
+                ['OR',
+                    ['OR', ['FROM', 'usps'], ['FROM', 'dhl']],
+                    ['OR', ['SUBJECT', 'tracking'], ['SUBJECT', 'shipped']]
                 ],
             ]
 
@@ -157,6 +211,7 @@ async def scan_imap_email(
                 messages = client.search(search_criteria)
             except:
                 # Fallback to simpler search if complex search fails
+                # Just get all recent emails and filter in Python
                 messages = client.search(['SINCE', since_date.date()])
 
             # Limit to most recent 100 emails to avoid timeouts
@@ -183,6 +238,29 @@ async def scan_imap_email(
                     # Search for tracking numbers in subject and body
                     text_to_search = f"{subject}\n{body}"
                     found = extract_tracking_numbers(text_to_search)
+
+                    # Check if package is already delivered (skip these)
+                    text_lower = text_to_search.lower()
+                    is_delivered = any(keyword in text_lower for keyword in [
+                        'delivered',
+                        'was delivered',
+                        'has been delivered',
+                        'delivery complete',
+                        'successfully delivered'
+                    ])
+
+                    # Debug logging
+                    if 'amazon' in sender.lower() or 'amazon' in subject.lower():
+                        print(f"DEBUG: Amazon email found")
+                        print(f"  Sender: {sender}")
+                        print(f"  Subject: {subject}")
+                        print(f"  Body preview: {body[:500]}")
+                        print(f"  Tracking numbers found: {found}")
+                        print(f"  Is delivered: {is_delivered}")
+
+                    # Skip if already delivered
+                    if is_delivered:
+                        continue
 
                     for tracking, carrier in found:
                         tracking_numbers.append(TrackingNumber(

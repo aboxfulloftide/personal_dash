@@ -16,6 +16,8 @@ class Package(Base):
     estimated_delivery = Column(Date)
     delivered = Column(Boolean, default=False)
     delivered_at = Column(DateTime)
+    dismissed = Column(Boolean, default=False)
+    dismissed_at = Column(DateTime)
     source = Column(String(20), default="manual")
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())

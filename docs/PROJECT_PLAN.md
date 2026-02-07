@@ -27,6 +27,7 @@ Personal Dash is a self-hosted, multi-user personal dashboard application that a
 7. **News Headlines** - RSS/News API aggregation
 8. **Fitness Stats** - Body weight tracking (manual entry)
 9. **Smart Home** - Home Assistant integration
+10. **Picture Frame** - Digital photo frame displaying images from a directory (slideshow or random)
 
 ## Architecture Principles
 - Monorepo structure

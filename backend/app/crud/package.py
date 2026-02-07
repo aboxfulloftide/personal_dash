@@ -22,8 +22,8 @@ def create_package(db: Session, user_id: int, package_in: PackageCreate) -> Pack
 
 
 def get_packages(db: Session, user_id: int, include_delivered: bool = False) -> list[Package]:
-    """Get all packages for a user."""
-    query = select(Package).where(Package.user_id == user_id)
+    """Get all packages for a user (excludes dismissed packages)."""
+    query = select(Package).where(Package.user_id == user_id, Package.dismissed == False)
     if not include_delivered:
         query = query.where(Package.delivered == False)
     query = query.order_by(Package.created_at.desc())
@@ -53,7 +53,7 @@ def update_package(db: Session, package: Package, update_data: PackageUpdate) ->
 
     # If marking as delivered, set delivered_at timestamp
     if update_data.delivered is True and package.delivered_at is None:
-        package.delivered_at = datetime.now(timezone.utc)
+        package.delivered_at = datetime.now(timezone.utc).replace(tzinfo=None)
 
     db.commit()
     db.refresh(package)
@@ -61,11 +61,13 @@ def update_package(db: Session, package: Package, update_data: PackageUpdate) ->
 
 
 def delete_package(db: Session, package_id: int) -> bool:
-    """Delete a package. Returns True if deleted."""
+    """Soft delete a package (marks as dismissed). Returns True if deleted."""
     package = db.get(Package, package_id)
     if not package:
         return False
-    db.delete(package)
+    # Soft delete: mark as dismissed instead of hard deleting
+    package.dismissed = True
+    package.dismissed_at = datetime.now(timezone.utc).replace(tzinfo=None)
     db.commit()
     return True
 
@@ -76,7 +78,7 @@ def add_event(db: Session, package_id: int, event_in: PackageEventCreate) -> Pac
         package_id=package_id,
         status=event_in.status,
         location=event_in.location,
-        event_time=event_in.event_time or datetime.now(timezone.utc),
+        event_time=event_in.event_time or datetime.now(timezone.utc).replace(tzinfo=None),
     )
     db.add(event)
     db.commit()

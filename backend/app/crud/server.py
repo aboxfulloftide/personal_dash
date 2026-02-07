@@ -70,7 +70,7 @@ def update_server_status(db: Session, server_id: int, is_online: bool) -> None:
     server = db.get(Server, server_id)
     if server:
         server.is_online = is_online
-        server.last_seen = datetime.now(timezone.utc)
+        server.last_seen = datetime.now(timezone.utc).replace(tzinfo=None)
         db.commit()
 
 

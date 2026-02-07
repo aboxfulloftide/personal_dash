@@ -4,7 +4,7 @@ import 'react-grid-layout/css/styles.css';
 import 'react-resizable/css/styles.css';
 import WidgetContainer from '../widgets/WidgetContainer';
 
-const GRID_COLS = 12;
+const GRID_COLS = 24;
 const ROW_HEIGHT = 100;
 const MARGIN = [16, 16];
 

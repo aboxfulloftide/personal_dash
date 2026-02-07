@@ -55,7 +55,8 @@ def login(login_data: LoginRequest, db: DbSession) -> dict:
     access_token = create_access_token(subject=user.id)
     refresh_token = generate_refresh_token()
 
-    expires_at = datetime.now(timezone.utc) + timedelta(
+    # Store as naive datetime (MySQL doesn't store timezone info)
+    expires_at = datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(
         days=settings.REFRESH_TOKEN_EXPIRE_DAYS
     )
     db_refresh_token = RefreshToken(
@@ -87,7 +88,9 @@ def refresh_token(refresh_data: RefreshRequest, db: DbSession) -> dict:
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    if db_token.expires_at < datetime.now(timezone.utc):
+    # Compare as naive datetimes (MySQL stores without timezone)
+    now_utc = datetime.now(timezone.utc).replace(tzinfo=None)
+    if db_token.expires_at < now_utc:
         db.delete(db_token)
         db.commit()
         raise HTTPException(
@@ -111,7 +114,8 @@ def refresh_token(refresh_data: RefreshRequest, db: DbSession) -> dict:
     access_token = create_access_token(subject=user.id)
     new_refresh_token = generate_refresh_token()
 
-    expires_at = datetime.now(timezone.utc) + timedelta(
+    # Store as naive datetime (MySQL doesn't store timezone info)
+    expires_at = datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(
         days=settings.REFRESH_TOKEN_EXPIRE_DAYS
     )
     new_db_token = RefreshToken(

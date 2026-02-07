@@ -17,8 +17,15 @@ export function AuthProvider({ children }) {
       const response = await api.get('/auth/me');
       setUser(response.data);
     } catch (error) {
-      localStorage.removeItem('access_token');
-      setUser(null);
+      // Only clear auth if refresh token is also missing (meaning refresh failed)
+      // If refresh token exists, the interceptor will handle the refresh
+      const refreshToken = localStorage.getItem('refresh_token');
+      if (!refreshToken) {
+        localStorage.removeItem('access_token');
+        setUser(null);
+      }
+      // If we have refresh token, the axios interceptor will handle it
+      // and we'll just retry this call
     } finally {
       setLoading(false);
     }
@@ -40,6 +47,7 @@ export function AuthProvider({ children }) {
   const login = async (email, password) => {
     const response = await api.post('/auth/login', { email, password });
     localStorage.setItem('access_token', response.data.access_token);
+    localStorage.setItem('refresh_token', response.data.refresh_token);
     await fetchUser();
     return response.data;
   };
@@ -55,21 +63,31 @@ export function AuthProvider({ children }) {
 
   const logout = async () => {
     try {
-      await api.post('/auth/logout');
+      const refreshToken = localStorage.getItem('refresh_token');
+      if (refreshToken) {
+        await api.post('/auth/logout', { refresh_token: refreshToken });
+      }
     } catch (error) {
       // Ignore errors on logout
     }
     localStorage.removeItem('access_token');
+    localStorage.removeItem('refresh_token');
     setUser(null);
   };
 
   const refreshToken = async () => {
     try {
-      const response = await api.post('/auth/refresh');
+      const refresh_token = localStorage.getItem('refresh_token');
+      if (!refresh_token) {
+        throw new Error('No refresh token available');
+      }
+      const response = await api.post('/auth/refresh', { refresh_token });
       localStorage.setItem('access_token', response.data.access_token);
+      localStorage.setItem('refresh_token', response.data.refresh_token);
       return response.data.access_token;
     } catch (error) {
       localStorage.removeItem('access_token');
+      localStorage.removeItem('refresh_token');
       setUser(null);
       throw error;
     }
