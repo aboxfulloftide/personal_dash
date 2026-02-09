@@ -134,22 +134,27 @@ personal-dash/
 5. **Fitness Stats widget** (~5-6 hours)
    - Body weight tracking with charts
 
-6. **Stock & Crypto - Database caching** (~6-8 hours)
+6. **Network Speed & Connection Status widget** (~5-7 hours)
+   - Run speed tests (download/upload/ping)
+   - Monitor connection status
+   - Historical speed tracking with graphs
+
+7. **Stock & Crypto - Database caching** (~6-8 hours)
    - Cache API results, fallback when rate limited
 
-7. **Package Tracker - Auto-remove delivered** (~6-8 hours)
+8. **Package Tracker - Auto-remove delivered** (~6-8 hours)
    - Auto-remove with email confirmation parsing
 
-8. **Weather - Severe weather alerts** (~6-8 hours)
+9. **Weather - Severe weather alerts** (~6-8 hours)
    - Overlay alerts on radar map
 
 ### 🔴 Complex (8-20+ hours)
 
-9. **Stock & Crypto - Portfolio value graph** (~8-10 hours)
-   - Daily/weekly portfolio tracking (requires #6 first)
+10. **Stock & Crypto - Portfolio value graph** (~8-10 hours)
+    - Daily/weekly portfolio tracking (requires #7 first)
 
-10. **Email Integration for Package Tracking** (~12-15 hours)
+11. **Email Integration for Package Tracking** (~12-15 hours)
     - IMAP + email parsing for multiple carriers
 
-11. **Deployment & Documentation** (~10-20+ hours)
+12. **Deployment & Documentation** (~10-20+ hours)
     - Deployment scripts, guides, feature docs

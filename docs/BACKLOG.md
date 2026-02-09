@@ -278,6 +278,76 @@ Add ability to define priority keywords that bump matching articles to the top o
 
 ---
 
+## Network Speed & Connection Status Widget
+
+### New Widget
+
+#### Internet Speed Test & Connection Monitor
+**Status:** Not Started
+**Priority:** Medium
+**Description:**
+Widget to monitor internet connection status and run network speed tests.
+
+**Requirements:**
+- **Connection Status:**
+  - Show online/offline status with indicator
+  - Display current ISP/network name
+  - Show connection type (WiFi, Ethernet, etc.)
+  - Latency/ping to common servers
+
+- **Speed Test:**
+  - On-demand speed test button
+  - Show download speed (Mbps)
+  - Show upload speed (Mbps)
+  - Show ping/latency (ms)
+  - Show jitter
+  - Progress indicator during test
+
+- **Historical Tracking:**
+  - Graph of speed test results over time
+  - Track daily average speeds
+  - Highlight speed drops or connection issues
+  - Show best/worst speeds recorded
+
+- **Alerts:**
+  - Notify when connection drops
+  - Alert if speeds are below configured threshold
+  - Track uptime percentage
+
+**Technical Implementation:**
+- Backend:
+  - Speed test endpoint using speedtest-cli or Ookla API
+  - Store test results in database with timestamps
+  - Connection monitoring endpoint (ping check)
+  - Table: `speedtest_history` (user_id, timestamp, download_speed, upload_speed, ping, jitter, server)
+
+- Frontend:
+  - Speed test controls (run test button)
+  - Real-time progress display during test
+  - Chart showing historical speeds (Chart.js or Recharts)
+  - Connection status indicator with last check time
+  - Configurable alert thresholds in settings
+
+**Use Cases:**
+- Monitor home internet performance
+- Track ISP reliability
+- Identify network issues
+- Verify ISP is delivering promised speeds
+- Historical performance tracking
+
+**Alternatives:**
+- Option 1: Use speedtest-cli Python package (free, accurate)
+- Option 2: Use Ookla Speedtest API (official but may have limits)
+- Option 3: Use custom ping/download tests (less accurate)
+
+**Related Files:**
+- `backend/app/api/v1/endpoints/network.py` (new)
+- `backend/app/models/speedtest.py` (new)
+- `frontend/src/components/widgets/NetworkWidget.jsx` (new)
+- `frontend/src/components/widgets/widgetRegistry.js`
+
+---
+
 ## General / Other Widgets
 
 _(Add more items here as needed)_
