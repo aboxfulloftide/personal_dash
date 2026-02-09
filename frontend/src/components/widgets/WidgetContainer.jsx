@@ -53,7 +53,9 @@ export default function WidgetContainer({
   return (
     <div className="h-full flex flex-col bg-white dark:bg-gray-800 rounded-lg shadow overflow-hidden">
       {/* Widget Header */}
-      <div className="flex items-center justify-between px-3 py-2 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/80">
+      <div className={`flex items-center justify-between px-3 py-2 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/80 ${
+        isEditing ? 'widget-drag-handle cursor-move' : ''
+      }`}>
         <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300 truncate">
           {config.title || widgetDef.name}
         </h3>
@@ -85,7 +87,7 @@ export default function WidgetContainer({
       </div>
 
       {/* Widget Content */}
-      <div className="flex-1 overflow-auto p-3">
+      <div className="flex-1 overflow-auto p-3 scrollbar-hide">
         {error ? (
           <WidgetError error={error} onRetry={handleRetry} />
         ) : (

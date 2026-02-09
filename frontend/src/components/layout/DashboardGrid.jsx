@@ -31,11 +31,17 @@ export default function DashboardGrid({
     }
   }, []);
 
+  // Make all widgets static (non-movable) when not in edit mode
+  const layoutWithStatic = layout.map(item => ({
+    ...item,
+    static: !isEditing
+  }));
+
   return (
     <div ref={handleContainerRef} className="w-full">
       <GridLayout
         className="layout"
-        layout={layout}
+        layout={layoutWithStatic}
         cols={GRID_COLS}
         rowHeight={ROW_HEIGHT}
         width={containerWidth}
@@ -48,7 +54,7 @@ export default function DashboardGrid({
         preventCollision={false}
       >
         {widgets.map((widget) => (
-          <div key={widget.id} className={isEditing ? 'widget-drag-handle cursor-move' : ''}>
+          <div key={widget.id}>
             <WidgetContainer
               type={widget.type}
               config={widget.config}

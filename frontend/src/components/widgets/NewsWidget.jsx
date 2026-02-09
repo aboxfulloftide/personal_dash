@@ -28,13 +28,19 @@ function truncateText(text, maxLength = 150) {
 }
 
 function ArticleItem({ article }) {
+  const isPriority = article.priority_score > 0;
+
   return (
-    <article className="border-b border-gray-200 dark:border-gray-700 last:border-b-0 pb-3 mb-3 last:pb-0 last:mb-0">
+    <article className={`border-b border-gray-200 dark:border-gray-700 last:border-b-0 pb-3 mb-3 last:pb-0 last:mb-0 ${
+      isPriority ? 'border-l-4 border-l-yellow-400 dark:border-l-yellow-500 pl-2 -ml-2' : ''
+    }`}>
       <a
         href={article.url}
         target="_blank"
         rel="noopener noreferrer"
-        className="block hover:bg-gray-50 dark:hover:bg-gray-700/30 -mx-1 px-1 py-1 rounded transition-colors"
+        className={`block hover:bg-gray-50 dark:hover:bg-gray-700/30 -mx-1 px-1 py-1 rounded transition-colors ${
+          isPriority ? 'bg-yellow-50/50 dark:bg-yellow-900/10' : ''
+        }`}
       >
         <div className="flex gap-3">
           {article.image_url && (
@@ -77,6 +83,20 @@ function ArticleItem({ article }) {
                 </>
               )}
             </div>
+
+            {/* Priority keywords badge */}
+            {isPriority && article.matched_keywords && article.matched_keywords.length > 0 && (
+              <div className="flex flex-wrap gap-1 mt-1">
+                {article.matched_keywords.map((keyword, idx) => (
+                  <span
+                    key={idx}
+                    className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-yellow-100 dark:bg-yellow-900/30 text-yellow-800 dark:text-yellow-200"
+                  >
+                    🔔 {keyword}
+                  </span>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       </a>
@@ -96,6 +116,7 @@ export default function NewsWidget({ config }) {
       category: config.category || 'general',
       include_keywords: config.include_keywords || undefined,
       exclude_keywords: config.exclude_keywords || undefined,
+      priority_keywords: config.priority_keywords || undefined,
     },
     refreshInterval: config.refresh_interval || 600,
     enabled: true,

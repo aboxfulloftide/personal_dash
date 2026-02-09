@@ -19,6 +19,8 @@ class NewsArticle(BaseModel):
     published: str | None
     author: str | None
     image_url: str | None
+    priority_score: int = 0  # Number of priority keyword matches
+    matched_keywords: list[str] = []  # List of matched priority keywords
 
 
 class NewsResponse(BaseModel):
@@ -178,6 +180,41 @@ async def fetch_rss_feed(url: str, source_name: str, max_articles: int) -> list[
     return articles
 
 
+def score_articles_by_priority(
+    articles: list[NewsArticle],
+    priority_keywords: str | None = None,
+) -> list[NewsArticle]:
+    """Score articles based on priority keyword matches (case-insensitive).
+
+    Updates articles in-place with priority_score and matched_keywords.
+    """
+    if not priority_keywords:
+        return articles
+
+    # Parse priority keywords
+    priority_list = [k.strip().lower() for k in priority_keywords.split(",") if k.strip()]
+    if not priority_list:
+        return articles
+
+    for article in articles:
+        # Combine searchable text (title + description)
+        searchable_text = (
+            f"{article.title or ''} {article.description or ''}"
+        ).lower()
+
+        # Find all matching keywords
+        matched = []
+        for keyword in priority_list:
+            if keyword in searchable_text:
+                matched.append(keyword)
+
+        # Update article with priority info
+        article.priority_score = len(matched)
+        article.matched_keywords = matched
+
+    return articles
+
+
 def filter_articles(
     articles: list[NewsArticle],
     include_keywords: str | None = None,
@@ -275,6 +312,7 @@ async def get_news(
     category: str = Query("general", description="NewsAPI category"),
     include_keywords: Optional[str] = Query(None, description="Comma-separated keywords to include"),
     exclude_keywords: Optional[str] = Query(None, description="Comma-separated keywords to exclude"),
+    priority_keywords: Optional[str] = Query(None, description="Comma-separated priority keywords (bumps to top + highlights)"),
 ):
     """Fetch news headlines from RSS feeds or NewsAPI.org with optional keyword filtering.
 
@@ -346,7 +384,15 @@ async def get_news(
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"Failed to fetch news: {str(e)}")
 
-    # Sort articles by published date (most recent first)
+    # Apply keyword filtering first
+    if include_keywords or exclude_keywords:
+        all_articles = filter_articles(all_articles, include_keywords, exclude_keywords)
+
+    # Score articles by priority keywords
+    if priority_keywords:
+        all_articles = score_articles_by_priority(all_articles, priority_keywords)
+
+    # Sort articles by priority score first, then by published date
     def get_published_time(article: NewsArticle) -> datetime:
         """Extract datetime from article, use epoch if no date."""
         if article.published:
@@ -356,11 +402,8 @@ async def get_news(
                 pass
         return datetime.min  # Put undated articles at the end
 
-    all_articles.sort(key=get_published_time, reverse=True)
-
-    # Apply keyword filtering
-    if include_keywords or exclude_keywords:
-        all_articles = filter_articles(all_articles, include_keywords, exclude_keywords)
+    # Sort by priority_score (descending) first, then by published date (descending)
+    all_articles.sort(key=lambda a: (a.priority_score, get_published_time(a)), reverse=True)
 
     # Limit to requested max_articles after filtering
     all_articles = all_articles[:max_articles]

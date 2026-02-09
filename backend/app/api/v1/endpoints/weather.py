@@ -1,5 +1,5 @@
 import httpx
-from datetime import datetime
+from datetime import datetime, timedelta
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 
@@ -43,11 +43,30 @@ class ForecastDay(BaseModel):
     hourly: list[HourlyForecast] = []
 
 
+class SunTimes(BaseModel):
+    sunrise: str  # "6:45 AM"
+    sunset: str   # "5:32 PM"
+    sunrise_timestamp: int  # Unix timestamp for progress bar calculation
+    sunset_timestamp: int   # Unix timestamp for progress bar calculation
+
+
+class RadarFrame(BaseModel):
+    time: int  # Unix timestamp
+    path: str  # Tile URL path
+
+
+class RadarResponse(BaseModel):
+    frames: list[RadarFrame]
+    host: str  # Tile server host
+
+
 class WeatherResponse(BaseModel):
     location: str
     current: CurrentWeather
     forecast: list[ForecastDay]
     today_hourly: list[HourlyForecast] = []  # Remaining hours for today
+    external_forecast_url: str  # URL to external detailed forecast
+    sun_times: SunTimes | None = None  # Sunrise/sunset times
 
 
 # Weather code mappings for Open-Meteo
@@ -168,6 +187,29 @@ async def geocode_location(location: str) -> tuple[float, float, str]:
     return lat, lon, display_name
 
 
+def get_external_forecast_url(lat: float, lon: float, provider: str = "windy") -> str:
+    """Generate URL for external weather forecast.
+
+    Supported providers:
+    - windy: Windy.com - Interactive weather maps (default)
+    - wunderground: Weather Underground - Detailed forecasts
+    - nws: National Weather Service - US only, official forecasts
+    - openweather: OpenWeatherMap - Global coverage
+    """
+    if provider == "nws":
+        # National Weather Service (US only)
+        return f"https://forecast.weather.gov/MapClick.php?lat={lat}&lon={lon}"
+    elif provider == "wunderground":
+        # Weather Underground - uses lat,lon format
+        return f"https://www.wunderground.com/weather/{lat},{lon}"
+    elif provider == "openweather":
+        # OpenWeatherMap - weather map with location
+        return f"https://openweathermap.org/weathermap?lat={lat}&lon={lon}&zoom=10"
+    else:  # Default to windy
+        # Windy.com - simplest, works with lat/lon directly
+        return f"https://www.windy.com/{lat}/{lon}"
+
+
 async def fetch_openmeteo(lat: float, lon: float, units: str) -> dict:
     """Fetch weather from Open-Meteo API."""
     temp_unit = "fahrenheit" if units == "imperial" else "celsius"
@@ -176,7 +218,7 @@ async def fetch_openmeteo(lat: float, lon: float, units: str) -> dict:
         f"https://api.open-meteo.com/v1/forecast?"
         f"latitude={lat}&longitude={lon}"
         f"&current=temperature_2m,relative_humidity_2m,apparent_temperature,weather_code"
-        f"&daily=weather_code,temperature_2m_max,temperature_2m_min"
+        f"&daily=weather_code,temperature_2m_max,temperature_2m_min,sunrise,sunset"
         f"&hourly=temperature_2m,precipitation_probability,weather_code"
         f"&temperature_unit={temp_unit}"
         f"&timezone=auto"
@@ -207,8 +249,8 @@ async def fetch_openmeteo(lat: float, lon: float, units: str) -> dict:
     hourly_precip = hourly_data.get("precipitation_probability", [])
     hourly_codes = hourly_data.get("weather_code", [])
 
-    # Group hourly data by date
-    hourly_by_date: dict[str, list[HourlyForecast]] = {}
+    # Group hourly data by date, storing (hour, item) tuples
+    hourly_by_date: dict[str, list[tuple[int, HourlyForecast]]] = {}
     now = datetime.now()
 
     for i, time_str in enumerate(hourly_times):
@@ -220,8 +262,10 @@ async def fetch_openmeteo(lat: float, lon: float, units: str) -> dict:
             continue
 
         code = hourly_codes[i] if i < len(hourly_codes) else 0
+        # Format time string - use %I with lstrip to handle both platforms
+        hour_12 = dt.strftime("%I %p").lstrip("0")  # "9 AM", "12 PM"
         hourly_item = HourlyForecast(
-            time=dt.strftime("%-I %p"),  # "9 AM", "12 PM"
+            time=hour_12,
             temp=hourly_temps[i] if i < len(hourly_temps) else None,
             precip_chance=hourly_precip[i] if i < len(hourly_precip) else None,
             icon=WMO_CODE_TO_ICON.get(code, "cloudy"),
@@ -229,7 +273,7 @@ async def fetch_openmeteo(lat: float, lon: float, units: str) -> dict:
 
         if date_key not in hourly_by_date:
             hourly_by_date[date_key] = []
-        hourly_by_date[date_key].append(hourly_item)
+        hourly_by_date[date_key].append((dt.hour, hourly_item))
 
     # Build forecast with hourly data
     forecast = []
@@ -241,32 +285,54 @@ async def fetch_openmeteo(lat: float, lon: float, units: str) -> dict:
     for i, date_str in enumerate(times[:5]):
         date = datetime.strptime(date_str, "%Y-%m-%d")
         code = codes[i] if i < len(codes) else 0
+        # Extract just the HourlyForecast items from (hour, item) tuples
+        day_hourly = [item for _, item in hourly_by_date.get(date_str, [])]
         forecast.append(ForecastDay(
             date=date_str,
             day=date.strftime("%a"),
             high=highs[i] if i < len(highs) else None,
             low=lows[i] if i < len(lows) else None,
             icon=WMO_CODE_TO_ICON.get(code, "cloudy"),
-            hourly=hourly_by_date.get(date_str, []),
+            hourly=day_hourly,
         ))
 
-    # Get remaining hours for today (from current hour onwards)
+    # Get extended hourly forecast from current hour through midnight
     today_str = now.strftime("%Y-%m-%d")
+    tomorrow_str = (now + timedelta(days=1)).strftime("%Y-%m-%d")
     current_hour = now.hour
     today_hourly = []
 
-    for item in hourly_by_date.get(today_str, []):
-        # Parse hour from time string like "9 AM" or "12 PM"
-        hour_str = item.time
-        try:
-            item_dt = datetime.strptime(hour_str, "%I %p")
-            item_hour = item_dt.hour
-            if item_hour >= current_hour:
-                today_hourly.append(item)
-        except ValueError:
-            today_hourly.append(item)  # Include if parsing fails
+    # Add remaining hours from today (using stored hour from tuple)
+    for hour, item in hourly_by_date.get(today_str, []):
+        if hour >= current_hour:
+            today_hourly.append(item)
 
-    return {"current": current, "forecast": forecast, "today_hourly": today_hourly}
+    # Add midnight (12 AM) from tomorrow to show end of day
+    for hour, item in hourly_by_date.get(tomorrow_str, []):
+        if hour == 0:  # Midnight
+            today_hourly.append(item)
+            break
+
+    # Parse sunrise/sunset times for today
+    sun_times = None
+    sunrise_times = daily_data.get("sunrise", [])
+    sunset_times = daily_data.get("sunset", [])
+    if sunrise_times and sunset_times:
+        try:
+            # Parse today's sunrise/sunset (first entry)
+            sunrise_dt = datetime.strptime(sunrise_times[0], "%Y-%m-%dT%H:%M")
+            sunset_dt = datetime.strptime(sunset_times[0], "%Y-%m-%dT%H:%M")
+
+            sun_times = SunTimes(
+                sunrise=sunrise_dt.strftime("%-I:%M %p"),  # "6:45 AM"
+                sunset=sunset_dt.strftime("%-I:%M %p"),    # "5:32 PM"
+                sunrise_timestamp=int(sunrise_dt.timestamp()),
+                sunset_timestamp=int(sunset_dt.timestamp()),
+            )
+        except (ValueError, IndexError):
+            pass  # If parsing fails, sun_times remains None
+
+    return {"current": current, "forecast": forecast, "today_hourly": today_hourly, "sun_times": sun_times}
 
 
 async def fetch_openweathermap(lat: float, lon: float, units: str, api_key: str) -> dict:
@@ -366,13 +432,46 @@ async def search_locations_endpoint(
     return results
 
 
+@router.get("/radar", response_model=RadarResponse)
+async def get_weather_radar(
+    current_user: CurrentActiveUser,
+):
+    """Fetch weather radar data from RainViewer API.
+
+    Returns animated radar frames for the past ~2 hours.
+    """
+    try:
+        async with httpx.AsyncClient() as client:
+            resp = await client.get("https://api.rainviewer.com/public/weather-maps.json", timeout=10.0)
+            data = resp.json()
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Failed to fetch radar data: {str(e)}")
+
+    # Extract radar frames (past precipitation)
+    radar_frames = data.get("radar", {}).get("past", [])
+    if not radar_frames:
+        raise HTTPException(status_code=404, detail="No radar data available")
+
+    # Get the tile server host
+    host = data.get("host", "")
+
+    # Build frame list with timestamps and paths
+    frames = [
+        RadarFrame(time=frame["time"], path=frame["path"])
+        for frame in radar_frames
+    ]
+
+    return RadarResponse(frames=frames, host=host)
+
+
 @router.get("", response_model=WeatherResponse)
 async def get_weather(
     current_user: CurrentActiveUser,
     location: str = Query(..., description="City name or location"),
     units: str = Query("imperial", description="imperial or metric"),
-    provider: str = Query("openmeteo", description="API provider"),
+    provider: str = Query("openmeteo", description="Weather API provider"),
     api_key: str | None = Query(None, description="API key for OpenWeatherMap"),
+    external_forecast_provider: str = Query("windy", description="External forecast link provider (windy, wunderground, nws, openweather)"),
 ):
     """Fetch current weather and forecast for a location."""
     try:
@@ -397,4 +496,6 @@ async def get_weather(
         current=result["current"],
         forecast=result["forecast"],
         today_hourly=result.get("today_hourly", []),
+        external_forecast_url=get_external_forecast_url(lat, lon, external_forecast_provider),
+        sun_times=result.get("sun_times"),
     )
