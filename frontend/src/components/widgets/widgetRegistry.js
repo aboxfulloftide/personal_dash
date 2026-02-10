@@ -220,6 +220,29 @@ const widgetRegistry = {
       refresh_interval: { type: 'number', label: 'Refresh Interval (seconds)', default: 600, min: 300, max: 3600, step: 60 },
     },
   },
+  network_status: {
+    component: () => import('./NetworkStatusWidget'),
+    name: 'Network Status',
+    description: 'Monitor internet connection status with multi-site ping tests',
+    category: 'monitoring',
+    defaultSize: { w: 3, h: 2 },
+    minSize: { w: 2, h: 2 },
+    maxSize: { w: 4, h: 3 },
+    hasDataEndpoint: true,
+    configSchema: {
+      title: { type: 'text', label: 'Title', default: 'Network Status' },
+      ping_targets: {
+        type: 'ping_targets',
+        label: 'Ping Targets',
+        default: [
+          { host: '8.8.8.8', name: 'Google DNS' },
+          { host: '1.1.1.1', name: 'Cloudflare DNS' },
+          { host: '208.67.222.222', name: 'OpenDNS' },
+        ],
+      },
+      refresh_interval: { type: 'number', label: 'Refresh Interval (seconds)', default: 60, min: 30, max: 600, step: 30 },
+    },
+  },
 };
 
 const fallbackWidget = {
