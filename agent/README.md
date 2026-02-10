@@ -1,12 +1,24 @@
 # Personal Dash - Server Monitoring Agent
 
-A lightweight Python agent that collects system and Docker metrics from a server and reports them to the Personal Dash backend API.
+A lightweight Python agent that collects system metrics, Docker container stats, and process monitoring data from a server and reports them to the Personal Dash backend API.
 
 ## Quick Start
 
-Before deploying the agent, you need to register the server in your Personal Dash instance:
+Before deploying the agent, you need to register the server in your Personal Dash instance.
 
-### 1. Register the Server via API
+### 1. Register the Server (Two Options)
+
+**Option A: Using the Dashboard UI (Recommended)**
+
+1. Log in to your Personal Dash instance
+2. Click "Servers" in the header navigation
+3. Click "Add Server" button
+4. Fill in the server details (name, hostname, IP, etc.)
+5. Click "Create Server"
+6. **Download the `agent.env` file** — this contains your API key and is only shown once!
+7. Upload the `agent.env` file to your server
+
+**Option B: Using the API**
 
 ```bash
 # Get an access token by logging in
@@ -43,13 +55,11 @@ Response:
 }
 ```
 
-**Save the `api_key` immediately** — it is only shown once. You'll need it and the server `id` for the agent configuration.
+**Save the `api_key` immediately** — it is only shown once.
 
 ### 2. Deploy the Agent
 
-Follow the deployment steps below, using:
-- `DASH_SERVER_ID` = the `id` from the response (e.g., `1`)
-- `DASH_API_KEY` = the `api_key` from the response
+Follow the deployment steps below. If you used the UI, you already have the `agent.env` file. If you used the API, you'll need to create it manually with the server `id` and `api_key` from the response.
 
 ## Server Management API
 
@@ -60,6 +70,9 @@ Follow the deployment steps below, using:
 | `/api/v1/servers/{id}` | GET | JWT | Get server details with recent metrics |
 | `/api/v1/servers/{id}` | DELETE | JWT | Remove a server |
 | `/api/v1/servers/metrics/report` | POST | API Key | Agent reports metrics (X-API-Key header) |
+| `/api/v1/servers/{id}/processes` | POST | JWT | Add process to monitor |
+| `/api/v1/servers/{id}/processes/{pid}` | DELETE | JWT | Remove monitored process |
+| `/api/v1/servers/{id}/processes-config` | GET | API Key | Agent fetches process configuration |
 
 ## Prerequisites
 
@@ -141,6 +154,7 @@ sudo journalctl -u dash-agent -f
 | `DASH_SERVER_ID` | Yes | — | Server ID assigned by the dashboard |
 | `DASH_POLL_INTERVAL` | No | `60` | Seconds between metric collection cycles (minimum 10) |
 | `DASH_COLLECT_DOCKER` | No | `true` | Enable Docker container stats collection |
+| `DASH_COLLECT_PROCESSES` | No | `true` | Enable process monitoring |
 | `DASH_LOG_LEVEL` | No | `INFO` | Logging level (`DEBUG`, `INFO`, `WARNING`, `ERROR`) |
 
 Configuration can also be passed via a `.env` file:
@@ -167,6 +181,42 @@ For each container:
 - CPU usage (%)
 - Memory usage and limit (bytes)
 
+### Processes (optional)
+
+For each monitored process (configured via the dashboard):
+
+- Process name and match pattern
+- Running status (boolean)
+- CPU usage (%) — aggregated if multiple instances
+- Memory usage (MB) — aggregated if multiple instances
+- Process ID (PID)
+
+**Process Monitoring Setup:**
+
+1. Configure processes to monitor via the Server Monitor widget in the dashboard
+2. Click "+ Add" in the Processes section
+3. Enter a display name (e.g., "MySQL Database") and match pattern (e.g., "mysqld")
+4. The agent will automatically detect and report stats on the next poll cycle
+
+The agent searches for processes by matching the pattern against:
+- Process name (e.g., "mysqld", "nginx", "plexmediaserver")
+- Command line arguments (full path and parameters)
+
+If multiple processes match the same pattern (e.g., multiple MySQL worker threads), their CPU and memory usage is aggregated.
+
+**Common Process Examples:**
+
+| Service | Display Name | Match Pattern |
+|---------|-------------|---------------|
+| MySQL | MySQL Database | `mysqld` |
+| PostgreSQL | PostgreSQL Server | `postgres` |
+| Nginx | Nginx Web Server | `nginx` |
+| Apache | Apache HTTP Server | `apache2` |
+| Redis | Redis Server | `redis-server` |
+| MongoDB | MongoDB | `mongod` |
+| Plex | Plex Media Server | `plexmediaserver` |
+| Docker | Docker Daemon | `dockerd` |
+
 ## Troubleshooting
 
 **Agent won't start — missing variables**
@@ -184,3 +234,12 @@ Ensure the `docker` Python package is installed and the `dash-agent` user is in 
 sudo usermod -aG docker dash-agent
 sudo systemctl restart dash-agent
 ```
+
+**Process shows as not running when it actually is**
+The agent searches for processes by name and command line. Try a more specific or broader match pattern:
+- Too specific: `mysqld --port=3306` → may not match if port differs
+- Better: `mysqld` → matches all MySQL instances
+- Alternative: check process name with `ps aux | grep <pattern>` to verify the pattern will match
+
+**Process permission errors**
+Some processes may require elevated permissions to read stats. The agent gracefully handles `AccessDenied` errors and will still report the process as running if it can detect it, but CPU/memory stats may be unavailable. Run the agent with appropriate permissions or use `sudo` if needed (not recommended for production).

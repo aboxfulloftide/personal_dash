@@ -44,6 +44,16 @@ class ContainerInfo(BaseModel):
     memory_limit: Optional[int]
 
 
+class ProcessInfo(BaseModel):
+    """Schema for process stats from agent."""
+    process_name: str
+    match_pattern: str
+    is_running: bool
+    cpu_percent: Optional[float] = None
+    memory_mb: Optional[int] = None
+    pid: Optional[int] = None
+
+
 class MetricsData(BaseModel):
     """Schema for system metrics from agent."""
     cpu_percent: Optional[float]
@@ -58,6 +68,7 @@ class MetricsPayload(BaseModel):
     server_id: int
     metrics: MetricsData
     containers: list[ContainerInfo] = []
+    processes: list[ProcessInfo] = []
 
 
 class MetricRecord(BaseModel):
@@ -88,11 +99,32 @@ class ContainerRecord(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class ProcessRecord(BaseModel):
+    """Schema for process record from database."""
+    id: int
+    process_name: str
+    match_pattern: str
+    is_running: bool
+    cpu_percent: Optional[float]
+    memory_mb: Optional[int]
+    pid: Optional[int]
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class ProcessCreate(BaseModel):
+    """Schema for creating a new monitored process."""
+    process_name: str = Field(..., min_length=1, max_length=255)
+    match_pattern: str = Field(..., min_length=1, max_length=255)
+
+
 class ServerDetail(BaseModel):
     """Schema for server with recent metrics and containers."""
     server: ServerResponse
     recent_metrics: list[MetricRecord]
     containers: list[ContainerRecord]
+    processes: list[ProcessRecord]
 
 
 class MessageResponse(BaseModel):

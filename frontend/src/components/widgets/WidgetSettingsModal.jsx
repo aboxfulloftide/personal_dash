@@ -2,6 +2,88 @@ import { useState, useEffect, useCallback } from 'react';
 import { getWidget, getWidgetConfigSchema } from './widgetRegistry';
 import api from '../../services/api';
 
+function ServerSelectField({ name, field, value, onChange }) {
+  const [servers, setServers] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchServers = async () => {
+      try {
+        const response = await api.get('/servers');
+        setServers(response.data);
+      } catch (err) {
+        console.error('Failed to fetch servers:', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchServers();
+  }, []);
+
+  const selectedIds = Array.isArray(value) ? value : (value ? [value] : []);
+
+  const toggleServer = (serverId) => {
+    const newSelected = selectedIds.includes(serverId)
+      ? selectedIds.filter(id => id !== serverId)
+      : [...selectedIds, serverId];
+    onChange(name, newSelected.length > 0 ? newSelected : null);
+  };
+
+  if (loading) {
+    return (
+      <div className="text-sm text-gray-500 dark:text-gray-400">Loading servers...</div>
+    );
+  }
+
+  if (servers.length === 0) {
+    return (
+      <div className="text-sm text-gray-500 dark:text-gray-400">
+        No servers available. <a href="/servers" className="text-blue-600 hover:underline">Add a server</a> first.
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+        {field.label} {field.required && <span className="text-red-500">*</span>}
+      </label>
+      <div className="space-y-2 max-h-48 overflow-y-auto border border-gray-300 dark:border-gray-600 rounded-md p-2">
+        {servers.map((server) => (
+          <label
+            key={server.id}
+            className="flex items-center gap-2 p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded cursor-pointer"
+          >
+            <input
+              type="checkbox"
+              checked={selectedIds.includes(server.id)}
+              onChange={() => toggleServer(server.id)}
+              className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+            />
+            <div className="flex-1 min-w-0">
+              <div className="text-sm font-medium text-gray-900 dark:text-white truncate">
+                {server.name}
+              </div>
+              <div className="text-xs text-gray-500 dark:text-gray-400">
+                {server.hostname || server.ip_address || `ID: ${server.id}`}
+                {' • '}
+                <span className={server.is_online ? 'text-green-600' : 'text-red-600'}>
+                  {server.is_online ? 'Online' : 'Offline'}
+                </span>
+              </div>
+            </div>
+          </label>
+        ))}
+      </div>
+      {selectedIds.length > 0 && (
+        <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+          {selectedIds.length} server{selectedIds.length !== 1 ? 's' : ''} selected
+        </p>
+      )}
+    </div>
+  );
+}
+
 function LocationSearchField({ name, field, value, onChange }) {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState([]);
@@ -200,6 +282,16 @@ function ConfigField({ name, field, value, onChange, config }) {
         <LocationSearchField
           name={name}
           field={{ ...field, displayValue: config[`${name}_display`] }}
+          value={value}
+          onChange={onChange}
+        />
+      );
+
+    case 'server_select':
+      return (
+        <ServerSelectField
+          name={name}
+          field={field}
           value={value}
           onChange={onChange}
         />

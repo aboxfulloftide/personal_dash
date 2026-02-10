@@ -1,0 +1,20 @@
+Due to the complexity of this change, here's the plan for updating ServerMonitorWidget to support multiple servers:
+
+1. **Backward Compatibility**: Support both `server_id` (old) and `server_ids` (new)
+2. **Multiple Data Fetching**: Fetch data for each server in the array
+3. **Compact Display**: Show multiple servers in a grid/list format
+4. **Single Server Mode**: Keep current detailed view for single server
+
+Key changes needed:
+- Parse config to get array of server IDs (handle both formats)
+- Use Promise.all to fetch data for all servers
+- Create a compact ServerCard component for multi-server view
+- Keep existing detailed view for single server
+- Handle loading/error states for multiple servers
+
+Would you like me to:
+A) Implement full multi-server support with compact cards
+B) Keep it simple - just allow selecting multiple but display them in a scrollable list
+C) Add a view mode toggle (compact vs detailed)
+
+What's your preference?

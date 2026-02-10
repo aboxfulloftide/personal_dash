@@ -92,7 +92,7 @@ export default function WidgetContainer({
           <WidgetError error={error} onRetry={handleRetry} />
         ) : (
           <Suspense fallback={<WidgetLoader />} key={retryKey}>
-            <WidgetComponent config={config} onConfigChange={onConfigChange} />
+            <WidgetComponent config={config} onConfigChange={onConfigChange} isEditing={isEditing} />
           </Suspense>
         )}
       </div>

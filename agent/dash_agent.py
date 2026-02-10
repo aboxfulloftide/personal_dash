@@ -6,12 +6,13 @@ A lightweight agent that collects system and Docker metrics from a server
 and reports them to the Personal Dash backend API.
 
 Configuration via environment variables or a .env file:
-    DASH_API_URL        (required) Backend URL, e.g. https://dash.example.com/api/v1
-    DASH_API_KEY        (required) Raw API key for authentication
-    DASH_SERVER_ID      (required) Server ID from the dashboard
-    DASH_POLL_INTERVAL  (default 60) Seconds between collection cycles
-    DASH_COLLECT_DOCKER (default true) Enable Docker container stats
-    DASH_LOG_LEVEL      (default INFO) Logging level
+    DASH_API_URL          (required) Backend URL, e.g. https://dash.example.com/api/v1
+    DASH_API_KEY          (required) Raw API key for authentication
+    DASH_SERVER_ID        (required) Server ID from the dashboard
+    DASH_POLL_INTERVAL    (default 60) Seconds between collection cycles
+    DASH_COLLECT_DOCKER   (default true) Enable Docker container stats
+    DASH_COLLECT_PROCESSES (default true) Enable process monitoring
+    DASH_LOG_LEVEL        (default INFO) Logging level
 
 Usage:
     python dash_agent.py
@@ -52,6 +53,7 @@ class Config:
     server_id: int
     poll_interval: int = 60
     collect_docker: bool = True
+    collect_processes: bool = True
     log_level: str = "INFO"
 
 
@@ -113,6 +115,11 @@ def load_config(config_file: str | None = None) -> Config:
         "1",
         "yes",
     )
+    collect_processes = os.environ.get("DASH_COLLECT_PROCESSES", "true").lower() in (
+        "true",
+        "1",
+        "yes",
+    )
     log_level = os.environ.get("DASH_LOG_LEVEL", "INFO").upper()
 
     return Config(
@@ -121,6 +128,7 @@ def load_config(config_file: str | None = None) -> Config:
         server_id=server_id,
         poll_interval=max(10, poll_interval),
         collect_docker=collect_docker,
+        collect_processes=collect_processes,
         log_level=log_level,
     )
 
@@ -222,6 +230,85 @@ def collect_docker_stats() -> list[dict]:
 
 
 # ---------------------------------------------------------------------------
+# Process Monitoring
+# ---------------------------------------------------------------------------
+
+
+def fetch_process_config(config: Config) -> list[dict]:
+    """Fetch the list of processes to monitor from the backend."""
+    url = f"{config.api_url}/servers/{config.server_id}/processes-config"
+
+    req = urllib.request.Request(
+        url,
+        headers={"X-API-Key": config.api_key},
+        method="GET",
+    )
+
+    try:
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            if resp.status == 200:
+                data = json.loads(resp.read().decode("utf-8"))
+                return data
+            logger.warning("Unexpected response fetching process config: %d", resp.status)
+            return []
+    except Exception as e:
+        logger.warning("Failed to fetch process config: %s", e)
+        return []
+
+
+def collect_process_stats(process_configs: list[dict]) -> list[dict]:
+    """Collect stats for monitored processes."""
+    results = []
+
+    for config in process_configs:
+        process_name = config["process_name"]
+        match_pattern = config["match_pattern"]
+
+        is_running = False
+        total_cpu = 0.0
+        total_memory = 0
+        found_pid = None
+
+        try:
+            # Search for matching processes
+            for proc in psutil.process_iter(['pid', 'name', 'cmdline', 'cpu_percent', 'memory_info']):
+                try:
+                    proc_name = proc.info['name'] or ""
+                    cmdline = " ".join(proc.info['cmdline'] or [])
+
+                    # Check if match pattern is in process name or command line
+                    if match_pattern.lower() in proc_name.lower() or match_pattern.lower() in cmdline.lower():
+                        is_running = True
+                        found_pid = proc.info['pid']
+
+                        # Get CPU percentage (one-shot)
+                        cpu = proc.cpu_percent(interval=0.1)
+                        total_cpu += cpu
+
+                        # Get memory in MB
+                        mem_info = proc.info.get('memory_info')
+                        if mem_info:
+                            total_memory += mem_info.rss // (1024 * 1024)
+
+                except (psutil.NoSuchProcess, psutil.AccessDenied):
+                    continue
+
+        except Exception as e:
+            logger.warning("Error collecting stats for process %s: %s", process_name, e)
+
+        results.append({
+            "process_name": process_name,
+            "match_pattern": match_pattern,
+            "is_running": is_running,
+            "cpu_percent": round(total_cpu, 2) if is_running else None,
+            "memory_mb": total_memory if is_running else None,
+            "pid": found_pid,
+        })
+
+    return results
+
+
+# ---------------------------------------------------------------------------
 # HTTP Sending
 # ---------------------------------------------------------------------------
 
@@ -307,6 +394,9 @@ def main() -> None:
                 "Docker stats requested but 'docker' package not installed — skipping"
             )
 
+    if config.collect_processes:
+        logger.info("Process monitoring enabled")
+
     while not shutdown_requested:
         try:
             logger.debug("Collecting system metrics...")
@@ -324,10 +414,21 @@ def main() -> None:
                 containers = collect_docker_stats()
                 logger.debug("Docker: %d containers", len(containers))
 
+            processes = []
+            if config.collect_processes:
+                logger.debug("Fetching process configuration...")
+                process_configs = fetch_process_config(config)
+                if process_configs:
+                    logger.debug("Collecting process stats for %d processes...", len(process_configs))
+                    processes = collect_process_stats(process_configs)
+                    running_count = sum(1 for p in processes if p["is_running"])
+                    logger.debug("Processes: %d/%d running", running_count, len(processes))
+
             payload = {
                 "server_id": config.server_id,
                 "metrics": metrics,
                 "containers": containers,
+                "processes": processes,
             }
 
             send_metrics(config, payload)

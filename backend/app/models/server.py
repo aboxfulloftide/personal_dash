@@ -22,6 +22,7 @@ class Server(Base):
     user = relationship("User", back_populates="servers")
     metrics = relationship("ServerMetric", back_populates="server", cascade="all, delete-orphan")
     containers = relationship("DockerContainer", back_populates="server", cascade="all, delete-orphan")
+    processes = relationship("MonitoredProcess", back_populates="server", cascade="all, delete-orphan")
     alerts = relationship("ServerAlert", back_populates="server", cascade="all, delete-orphan")
 
 
@@ -55,6 +56,22 @@ class DockerContainer(Base):
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
 
     server = relationship("Server", back_populates="containers")
+
+
+class MonitoredProcess(Base):
+    __tablename__ = "monitored_processes"
+
+    id = Column(Integer, primary_key=True, index=True)
+    server_id = Column(Integer, ForeignKey("servers.id", ondelete="CASCADE"), nullable=False, index=True)
+    process_name = Column(String(255), nullable=False)
+    match_pattern = Column(String(255), nullable=False)
+    is_running = Column(Boolean, default=False)
+    cpu_percent = Column(Float)
+    memory_mb = Column(BigInteger)
+    pid = Column(Integer)
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+    server = relationship("Server", back_populates="processes")
 
 
 class ServerAlert(Base):

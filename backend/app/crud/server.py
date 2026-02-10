@@ -3,8 +3,8 @@ from datetime import datetime, timezone
 from sqlalchemy.orm import Session
 from sqlalchemy import select, delete
 
-from app.models.server import Server, ServerMetric, DockerContainer
-from app.schemas.server import ServerCreate, MetricsData, ContainerInfo
+from app.models.server import Server, ServerMetric, DockerContainer, MonitoredProcess
+from app.schemas.server import ServerCreate, MetricsData, ContainerInfo, ProcessInfo, ProcessCreate
 from app.core.security import get_password_hash
 
 
@@ -150,3 +150,56 @@ def get_containers(db: Session, server_id: int) -> list[DockerContainer]:
         select(DockerContainer).where(DockerContainer.server_id == server_id)
     )
     return list(result.scalars().all())
+
+
+def upsert_processes(db: Session, server_id: int, processes: list[ProcessInfo]) -> None:
+    """Upsert process records for a server."""
+    # Get existing processes for this server
+    existing = db.execute(
+        select(MonitoredProcess).where(MonitoredProcess.server_id == server_id)
+    )
+    existing_map = {p.match_pattern: p for p in existing.scalars().all()}
+
+    for process in processes:
+        if process.match_pattern in existing_map:
+            # Update existing
+            existing_process = existing_map[process.match_pattern]
+            existing_process.is_running = process.is_running
+            existing_process.cpu_percent = process.cpu_percent
+            existing_process.memory_mb = process.memory_mb
+            existing_process.pid = process.pid
+            existing_process.updated_at = datetime.now(timezone.utc).replace(tzinfo=None)
+
+    db.commit()
+
+
+def get_processes(db: Session, server_id: int) -> list[MonitoredProcess]:
+    """Get all monitored processes for a server."""
+    result = db.execute(
+        select(MonitoredProcess).where(MonitoredProcess.server_id == server_id)
+    )
+    return list(result.scalars().all())
+
+
+def create_monitored_process(db: Session, server_id: int, process_in: ProcessCreate) -> MonitoredProcess:
+    """Create a new monitored process."""
+    process = MonitoredProcess(
+        server_id=server_id,
+        process_name=process_in.process_name,
+        match_pattern=process_in.match_pattern,
+        is_running=False,
+    )
+    db.add(process)
+    db.commit()
+    db.refresh(process)
+    return process
+
+
+def delete_monitored_process(db: Session, process_id: int) -> bool:
+    """Delete a monitored process. Returns True if deleted, False if not found."""
+    process = db.get(MonitoredProcess, process_id)
+    if not process:
+        return False
+    db.delete(process)
+    db.commit()
+    return True
