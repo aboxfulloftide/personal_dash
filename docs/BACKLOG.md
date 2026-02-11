@@ -7,14 +7,13 @@
 ## Priority Summary
 
 ### High Priority (Do Next)
-1. **Stock/Crypto Database Caching** - Critical for reliability, prevents blank widgets due to API rate limits
-2. **Network Status Widget Phase 2** - Builds on completed Phase 1, adds valuable packet loss and uptime tracking
-3. **Server Monitor: Track Specific Processes** - Already completed, but may need additional features
+1. **Network Status Widget Phase 2** - Builds on completed Phase 1, adds valuable packet loss and uptime tracking
+2. **Stock/Crypto: Portfolio Value Graph** - Now unblocked with database caching complete
 
 ### Medium Priority (Soon)
-4. **Package Tracker: Auto-remove Delivered** - Quality of life improvement
-5. **News: Priority Keywords** - Already partially implemented, needs UI enhancement
-6. **Stock/Crypto: Portfolio Value Graph** - Depends on database caching being implemented first
+3. **Package Tracker: Auto-remove Delivered** - Quality of life improvement
+4. **News: Priority Keywords** - Already partially implemented, needs UI enhancement
+5. **Server Monitor: Track Specific Processes** - Already completed, but may need additional features
 
 ### Lower Priority (Later)
 7. **Weather Widget Enhancements** - Nice to have additions
@@ -56,46 +55,6 @@ Currently, packages that are delivered remain in the tracker indefinitely. They 
 ## Stock Ticker & Crypto Widgets
 
 ### Enhancements
-
-#### Database Caching for API Results
-**Status:** Not Started
-**Priority:** High
-**Description:**
-Stock and Crypto widgets sometimes show blank data, likely due to hitting API rate limits. Need to implement database caching as a fallback.
-
-**Current Problem:**
-- Crypto widget occasionally shows blank/empty
-- Likely hitting rate limits on free API tiers
-- No fallback when API fails or is throttled
-
-**Proposed Solution:**
-1. Store API results in database with timestamp
-2. Cache results once per hour (avoid excessive DB writes)
-3. When API call fails or returns no data, read most recent cached data from database
-4. Display cached data with a timestamp indicator (e.g., "Last updated: 45 minutes ago")
-
-**Technical Implementation:**
-- Create new database tables:
-  - `stock_cache` (symbol, price, change, volume, timestamp, user_id)
-  - `crypto_cache` (symbol, price, change, market_cap, timestamp, user_id)
-- Add caching logic to API endpoints:
-  - Check if we have data from last hour in DB
-  - If yes, use cached data
-  - If no or stale (>1 hour), fetch from API and update cache
-- On API failure, always fall back to most recent cached data
-- Add "last updated" timestamp to widget display
-
-**Benefits:**
-- Resilient to API outages and rate limits
-- Reduces API calls (better for free tier limits)
-- Always shows data (even if slightly stale)
-- Better user experience
-
-**Related Files:**
-- `backend/app/api/v1/endpoints/stocks.py`
-- `backend/app/api/v1/endpoints/crypto.py`
-- `backend/app/models/` (new cache models)
-- Database migration needed
 
 #### Portfolio Value Graph
 **Status:** Not Started
@@ -400,6 +359,50 @@ _(Add more items here as needed)_
 ---
 
 ## Completed Items
+
+### Stock & Crypto Database Caching ✓
+**Completed:** 2026-02-10
+**Description:**
+Implemented historical price storage to prevent blank widgets when API rate limits are hit. Data is cached in database and used as fallback when external APIs fail.
+
+**Implemented Features:**
+- Database tables for historical data:
+  - `stock_quotes` - All stock price data points
+  - `crypto_prices` - All crypto price data points
+- API endpoints store successful fetches with 15-minute deduplication
+- Database fallback when API calls fail (prevents blank widgets)
+- Widget refresh intervals increased to 20 minutes
+- ~92% reduction in API calls per user
+- Historical data accumulates naturally for future graphing
+- "Last updated" timestamp indicators on widgets
+
+**Technical Implementation:**
+- Backend:
+  - New models: `StockQuote`, `CryptoPrice`
+  - CRUD operations in `app/crud/finance.py`
+  - Store-and-fallback pattern in finance endpoints
+  - 15-minute deduplication to prevent excessive storage
+- Frontend:
+  - 20-minute minimum refresh intervals (was 60 seconds)
+  - "Last updated" time display with formatTimeAgo()
+  - Updated widget registry defaults
+- Storage: ~3-4 records/hour/symbol (~19 MB/year for typical usage)
+
+**Benefits:**
+- No more blank widgets when APIs fail
+- Resilient to API rate limits and outages
+- Reduced API calls (better for free tier limits)
+- Historical data ready for portfolio value graphs
+
+**Files Modified:**
+- `backend/app/models/finance.py` - New models
+- `backend/app/crud/finance.py` - New CRUD operations
+- `backend/alembic/versions/29a342be5504_add_stock_crypto_prices.py` - Migration
+- `backend/app/models/__init__.py` - Export new models
+- `backend/app/api/v1/endpoints/finance.py` - Fallback logic + deduplication
+- `frontend/src/components/widgets/StockTickerWidget.jsx` - 20-min intervals
+- `frontend/src/components/widgets/CryptoWidget.jsx` - 20-min intervals
+- `frontend/src/components/widgets/widgetRegistry.js` - Updated defaults
 
 ### Server Monitor - Monitor Mounted Drives Status ✓
 **Completed:** 2026-02-10
