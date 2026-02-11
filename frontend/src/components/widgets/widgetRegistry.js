@@ -6,7 +6,7 @@ const widgetRegistry = {
   server_monitor: {
     component: () => import('./ServerMonitorWidget'),
     name: 'Server Monitor',
-    description: 'Monitor server CPU, memory, disk, Docker containers, and processes',
+    description: 'Monitor server CPU, memory, disk, Docker containers, processes, and drives',
     category: 'monitoring',
     defaultSize: { w: 3, h: 3 },
     minSize: { w: 2, h: 2 },
@@ -18,6 +18,7 @@ const widgetRegistry = {
       refresh_interval: { type: 'number', label: 'Refresh Interval (seconds)', default: 60, min: 10, max: 3600, step: 10 },
       show_docker: { type: 'toggle', label: 'Show Docker Containers', default: true },
       show_processes: { type: 'toggle', label: 'Show Processes', default: true },
+      show_drives: { type: 'toggle', label: 'Show Drives', default: true },
     },
   },
   package_tracker: {

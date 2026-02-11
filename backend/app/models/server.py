@@ -23,6 +23,7 @@ class Server(Base):
     metrics = relationship("ServerMetric", back_populates="server", cascade="all, delete-orphan")
     containers = relationship("DockerContainer", back_populates="server", cascade="all, delete-orphan")
     processes = relationship("MonitoredProcess", back_populates="server", cascade="all, delete-orphan")
+    drives = relationship("MonitoredDrive", back_populates="server", cascade="all, delete-orphan")
     alerts = relationship("ServerAlert", back_populates="server", cascade="all, delete-orphan")
 
 
@@ -72,6 +73,25 @@ class MonitoredProcess(Base):
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
 
     server = relationship("Server", back_populates="processes")
+
+
+class MonitoredDrive(Base):
+    __tablename__ = "monitored_drives"
+
+    id = Column(Integer, primary_key=True, index=True)
+    server_id = Column(Integer, ForeignKey("servers.id", ondelete="CASCADE"), nullable=False, index=True)
+    mount_point = Column(String(255), nullable=False)
+    device = Column(String(255))
+    fstype = Column(String(50))
+    total_bytes = Column(BigInteger)
+    used_bytes = Column(BigInteger)
+    free_bytes = Column(BigInteger)
+    percent_used = Column(Float)
+    is_mounted = Column(Boolean, default=False)
+    is_readonly = Column(Boolean, default=False)
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+    server = relationship("Server", back_populates="drives")
 
 
 class ServerAlert(Base):

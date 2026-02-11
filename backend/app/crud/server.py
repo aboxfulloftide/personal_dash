@@ -3,8 +3,8 @@ from datetime import datetime, timezone
 from sqlalchemy.orm import Session
 from sqlalchemy import select, delete
 
-from app.models.server import Server, ServerMetric, DockerContainer, MonitoredProcess
-from app.schemas.server import ServerCreate, MetricsData, ContainerInfo, ProcessInfo, ProcessCreate
+from app.models.server import Server, ServerMetric, DockerContainer, MonitoredProcess, MonitoredDrive
+from app.schemas.server import ServerCreate, MetricsData, ContainerInfo, ProcessInfo, ProcessCreate, DriveInfo, DriveCreate
 from app.core.security import get_password_hash
 
 
@@ -201,5 +201,61 @@ def delete_monitored_process(db: Session, process_id: int) -> bool:
     if not process:
         return False
     db.delete(process)
+    db.commit()
+    return True
+
+
+def upsert_drives(db: Session, server_id: int, drives: list[DriveInfo]) -> None:
+    """Upsert drive records for a server."""
+    # Get existing drives for this server
+    existing = db.execute(
+        select(MonitoredDrive).where(MonitoredDrive.server_id == server_id)
+    )
+    existing_map = {d.mount_point: d for d in existing.scalars().all()}
+
+    for drive in drives:
+        if drive.mount_point in existing_map:
+            # Update existing
+            existing_drive = existing_map[drive.mount_point]
+            existing_drive.device = drive.device
+            existing_drive.fstype = drive.fstype
+            existing_drive.total_bytes = drive.total_bytes
+            existing_drive.used_bytes = drive.used_bytes
+            existing_drive.free_bytes = drive.free_bytes
+            existing_drive.percent_used = drive.percent_used
+            existing_drive.is_mounted = drive.is_mounted
+            existing_drive.is_readonly = drive.is_readonly
+            existing_drive.updated_at = datetime.now(timezone.utc).replace(tzinfo=None)
+
+    db.commit()
+
+
+def get_drives(db: Session, server_id: int) -> list[MonitoredDrive]:
+    """Get all monitored drives for a server."""
+    result = db.execute(
+        select(MonitoredDrive).where(MonitoredDrive.server_id == server_id)
+    )
+    return list(result.scalars().all())
+
+
+def create_monitored_drive(db: Session, server_id: int, drive_in: DriveCreate) -> MonitoredDrive:
+    """Create a new monitored drive."""
+    drive = MonitoredDrive(
+        server_id=server_id,
+        mount_point=drive_in.mount_point,
+        is_mounted=False,
+    )
+    db.add(drive)
+    db.commit()
+    db.refresh(drive)
+    return drive
+
+
+def delete_monitored_drive(db: Session, drive_id: int) -> bool:
+    """Delete a monitored drive. Returns True if deleted, False if not found."""
+    drive = db.get(MonitoredDrive, drive_id)
+    if not drive:
+        return False
+    db.delete(drive)
     db.commit()
     return True

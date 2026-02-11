@@ -12,6 +12,7 @@ Configuration via environment variables or a .env file:
     DASH_POLL_INTERVAL    (default 60) Seconds between collection cycles
     DASH_COLLECT_DOCKER   (default true) Enable Docker container stats
     DASH_COLLECT_PROCESSES (default true) Enable process monitoring
+    DASH_COLLECT_DRIVES   (default true) Enable drive monitoring
     DASH_LOG_LEVEL        (default INFO) Logging level
 
 Usage:
@@ -54,6 +55,7 @@ class Config:
     poll_interval: int = 60
     collect_docker: bool = True
     collect_processes: bool = True
+    collect_drives: bool = True
     log_level: str = "INFO"
 
 
@@ -120,6 +122,11 @@ def load_config(config_file: str | None = None) -> Config:
         "1",
         "yes",
     )
+    collect_drives = os.environ.get("DASH_COLLECT_DRIVES", "true").lower() in (
+        "true",
+        "1",
+        "yes",
+    )
     log_level = os.environ.get("DASH_LOG_LEVEL", "INFO").upper()
 
     return Config(
@@ -129,6 +136,7 @@ def load_config(config_file: str | None = None) -> Config:
         poll_interval=max(10, poll_interval),
         collect_docker=collect_docker,
         collect_processes=collect_processes,
+        collect_drives=collect_drives,
         log_level=log_level,
     )
 
@@ -309,6 +317,98 @@ def collect_process_stats(process_configs: list[dict]) -> list[dict]:
 
 
 # ---------------------------------------------------------------------------
+# Drive Monitoring
+# ---------------------------------------------------------------------------
+
+
+def fetch_drives_config(config: Config) -> list[dict]:
+    """Fetch the list of drives to monitor from the backend."""
+    url = f"{config.api_url}/servers/{config.server_id}/drives-config"
+
+    req = urllib.request.Request(
+        url,
+        headers={"X-API-Key": config.api_key},
+        method="GET",
+    )
+
+    try:
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            if resp.status == 200:
+                data = json.loads(resp.read().decode("utf-8"))
+                return data
+            logger.warning("Unexpected response fetching drives config: %d", resp.status)
+            return []
+    except Exception as e:
+        logger.warning("Failed to fetch drives config: %s", e)
+        return []
+
+
+def collect_drive_stats(drive_configs: list[dict]) -> list[dict]:
+    """Collect stats for monitored drives."""
+    results = []
+
+    # Get all mounted partitions for quick lookup
+    partitions_map = {}
+    try:
+        for partition in psutil.disk_partitions():
+            partitions_map[partition.mountpoint] = partition
+    except Exception as e:
+        logger.warning("Error getting disk partitions: %s", e)
+        return []
+
+    for drive_config in drive_configs:
+        mount_point = drive_config["mount_point"]
+
+        # Check if mount point exists in current partitions
+        partition = partitions_map.get(mount_point)
+
+        # Try to get usage stats (works for both mount points and directories)
+        try:
+            usage = psutil.disk_usage(mount_point)
+            is_mounted = True
+            total_bytes = usage.total
+            used_bytes = usage.used
+            free_bytes = usage.free
+            percent_used = usage.percent
+
+            # If it's an actual mount point, get device/fstype info
+            if partition:
+                device = partition.device
+                fstype = partition.fstype
+                is_readonly = "ro" in partition.opts.split(",")
+            else:
+                # It's a directory on another filesystem, not a distinct mount
+                device = None
+                fstype = None
+                is_readonly = False
+        except (PermissionError, OSError, FileNotFoundError) as e:
+            logger.warning("Cannot access path %s: %s", mount_point, e)
+            # Path doesn't exist or is not accessible
+            is_mounted = False
+            device = None
+            fstype = None
+            total_bytes = None
+            used_bytes = None
+            free_bytes = None
+            percent_used = None
+            is_readonly = False
+
+        results.append({
+            "mount_point": mount_point,
+            "device": device,
+            "fstype": fstype,
+            "total_bytes": total_bytes,
+            "used_bytes": used_bytes,
+            "free_bytes": free_bytes,
+            "percent_used": percent_used,
+            "is_mounted": is_mounted,
+            "is_readonly": is_readonly,
+        })
+
+    return results
+
+
+# ---------------------------------------------------------------------------
 # HTTP Sending
 # ---------------------------------------------------------------------------
 
@@ -397,6 +497,9 @@ def main() -> None:
     if config.collect_processes:
         logger.info("Process monitoring enabled")
 
+    if config.collect_drives:
+        logger.info("Drive monitoring enabled")
+
     while not shutdown_requested:
         try:
             logger.debug("Collecting system metrics...")
@@ -424,11 +527,22 @@ def main() -> None:
                     running_count = sum(1 for p in processes if p["is_running"])
                     logger.debug("Processes: %d/%d running", running_count, len(processes))
 
+            drives = []
+            if config.collect_drives:
+                logger.debug("Fetching drives configuration...")
+                drive_configs = fetch_drives_config(config)
+                if drive_configs:
+                    logger.debug("Collecting drive stats for %d drives...", len(drive_configs))
+                    drives = collect_drive_stats(drive_configs)
+                    mounted_count = sum(1 for d in drives if d["is_mounted"])
+                    logger.debug("Drives: %d/%d mounted", mounted_count, len(drives))
+
             payload = {
                 "server_id": config.server_id,
                 "metrics": metrics,
                 "containers": containers,
                 "processes": processes,
+                "drives": drives,
             }
 
             send_metrics(config, payload)

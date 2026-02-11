@@ -54,6 +54,19 @@ class ProcessInfo(BaseModel):
     pid: Optional[int] = None
 
 
+class DriveInfo(BaseModel):
+    """Schema for drive stats from agent."""
+    mount_point: str
+    device: Optional[str] = None
+    fstype: Optional[str] = None
+    total_bytes: Optional[int] = None
+    used_bytes: Optional[int] = None
+    free_bytes: Optional[int] = None
+    percent_used: Optional[float] = None
+    is_mounted: bool
+    is_readonly: bool = False
+
+
 class MetricsData(BaseModel):
     """Schema for system metrics from agent."""
     cpu_percent: Optional[float]
@@ -69,6 +82,7 @@ class MetricsPayload(BaseModel):
     metrics: MetricsData
     containers: list[ContainerInfo] = []
     processes: list[ProcessInfo] = []
+    drives: list[DriveInfo] = []
 
 
 class MetricRecord(BaseModel):
@@ -119,12 +133,35 @@ class ProcessCreate(BaseModel):
     match_pattern: str = Field(..., min_length=1, max_length=255)
 
 
+class DriveRecord(BaseModel):
+    """Schema for drive record from database."""
+    id: int
+    mount_point: str
+    device: Optional[str]
+    fstype: Optional[str]
+    total_bytes: Optional[int]
+    used_bytes: Optional[int]
+    free_bytes: Optional[int]
+    percent_used: Optional[float]
+    is_mounted: bool
+    is_readonly: bool
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class DriveCreate(BaseModel):
+    """Schema for creating a new monitored drive."""
+    mount_point: str = Field(..., min_length=1, max_length=255, pattern="^/.*")
+
+
 class ServerDetail(BaseModel):
     """Schema for server with recent metrics and containers."""
     server: ServerResponse
     recent_metrics: list[MetricRecord]
     containers: list[ContainerRecord]
     processes: list[ProcessRecord]
+    drives: list[DriveRecord]
 
 
 class MessageResponse(BaseModel):
