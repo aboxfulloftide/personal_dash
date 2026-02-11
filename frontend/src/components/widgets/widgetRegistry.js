@@ -57,7 +57,7 @@ const widgetRegistry = {
         ],
       },
       api_key: { type: 'text', label: 'API Key (optional)', placeholder: 'Your API key for higher limits' },
-      refresh_interval: { type: 'number', label: 'Refresh Interval (seconds)', default: 300, min: 60, max: 3600, step: 60 },
+      refresh_interval: { type: 'number', label: 'Refresh Interval (seconds)', default: 1200, min: 1200, max: 3600, step: 60 },
     },
   },
   crypto_prices: {
@@ -88,7 +88,7 @@ const widgetRegistry = {
           { value: 'gbp', label: 'GBP' },
         ],
       },
-      refresh_interval: { type: 'number', label: 'Refresh Interval (seconds)', default: 300, min: 60, max: 3600, step: 60 },
+      refresh_interval: { type: 'number', label: 'Refresh Interval (seconds)', default: 1200, min: 1200, max: 3600, step: 60 },
     },
   },
   weather: {

@@ -2,10 +2,11 @@ import { useState, useEffect, useMemo } from 'react';
 import api from '../../services/api';
 
 // Minimum refresh intervals per provider (in seconds) to avoid rate limits
+// With database caching, we can use 20-minute intervals to reduce API calls
 const MIN_REFRESH_INTERVALS = {
-  yahoo: 60,          // No official limit, be conservative
-  alphavantage: 300,  // 25 requests/day = ~1 per 5 min with buffer
-  finnhub: 60,        // 60 calls/min, but be conservative
+  yahoo: 1200,        // 20 minutes (database fallback prevents blank widgets)
+  alphavantage: 1200, // 20 minutes (3 attempts per hour, ~72 requests/day per symbol)
+  finnhub: 1200,      // 20 minutes (60 calls/min limit, plenty of headroom)
 };
 
 function formatCurrency(value) {
@@ -118,11 +119,21 @@ function AddHoldingModal({ isOpen, onClose, onAdd }) {
   );
 }
 
+function formatTimeAgo(date) {
+  const seconds = Math.floor((new Date() - date) / 1000);
+  if (seconds < 60) return 'just now';
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  return `${hours}h ago`;
+}
+
 export default function StockTickerWidget({ config, onConfigChange }) {
   const [quotes, setQuotes] = useState({});
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [showAddModal, setShowAddModal] = useState(false);
+  const [lastUpdated, setLastUpdated] = useState(null);
 
   const holdings = config.holdings || [];
 
@@ -148,6 +159,7 @@ export default function StockTickerWidget({ config, onConfigChange }) {
         quoteMap[q.symbol] = q;
       }
       setQuotes(quoteMap);
+      setLastUpdated(new Date());
     } catch (err) {
       setError(err.response?.data?.detail || 'Failed to fetch quotes');
     } finally {
@@ -212,9 +224,16 @@ export default function StockTickerWidget({ config, onConfigChange }) {
   return (
     <div className="h-full flex flex-col">
       <div className="flex items-center justify-between mb-2">
-        <span className="text-xs text-gray-500 dark:text-gray-400">
-          {loading ? 'Updating...' : error ? 'Error' : `${holdings.length} stocks`}
-        </span>
+        <div className="flex flex-col">
+          <span className="text-xs text-gray-500 dark:text-gray-400">
+            {loading ? 'Updating...' : error ? 'Error' : `${holdings.length} stocks`}
+          </span>
+          {lastUpdated && !loading && (
+            <span className="text-xs text-gray-400 dark:text-gray-500">
+              {formatTimeAgo(lastUpdated)}
+            </span>
+          )}
+        </div>
         <button
           onClick={() => setShowAddModal(true)}
           className="text-xs text-blue-600 hover:text-blue-700 dark:text-blue-400"

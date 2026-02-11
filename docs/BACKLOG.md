@@ -1,6 +1,24 @@
 # Personal Dash - Backlog (Bugs & Enhancements)
 
-> **Note:** This file tracks bugs and enhancement ideas for future work. Items are not prioritized - just captured for later consideration.
+> **Note:** This file tracks bugs and enhancement ideas for future work.
+
+---
+
+## Priority Summary
+
+### High Priority (Do Next)
+1. **Stock/Crypto Database Caching** - Critical for reliability, prevents blank widgets due to API rate limits
+2. **Network Status Widget Phase 2** - Builds on completed Phase 1, adds valuable packet loss and uptime tracking
+3. **Server Monitor: Track Specific Processes** - Already completed, but may need additional features
+
+### Medium Priority (Soon)
+4. **Package Tracker: Auto-remove Delivered** - Quality of life improvement
+5. **News: Priority Keywords** - Already partially implemented, needs UI enhancement
+6. **Stock/Crypto: Portfolio Value Graph** - Depends on database caching being implemented first
+
+### Lower Priority (Later)
+7. **Weather Widget Enhancements** - Nice to have additions
+8. **Network Speed Test Widget** - Separate widget, different from Network Status
 
 ---
 
@@ -165,51 +183,6 @@ Add ability to monitor specific processes/services and their status.
 - `backend/app/models/server.py`
 - `frontend/src/components/widgets/ServerMonitorWidget.jsx`
 
-#### Monitor Mounted Drives Status
-**Status:** Not Started
-**Priority:** Medium
-**Description:**
-Display status of mounted drives (NAS mounts, external drives, network shares).
-
-**Requirements:**
-- Show all mounted filesystems
-- For each mount:
-  - Mount point (e.g., `/mnt/nas`, `/media/backup`)
-  - Device/source (e.g., `//nas/share`, `/dev/sdb1`)
-  - Filesystem type (ext4, nfs, cifs, etc.)
-  - Status: Mounted ✓ / Not mounted ✗
-  - Disk usage (used/total, %)
-- Alert when expected mounts are missing
-- Allow user to configure which mounts to track
-
-**Technical Implementation:**
-- Agent side (Python):
-  - Add `get_mount_status()` function
-  - Use `psutil.disk_partitions()` to get all mounts
-  - Filter for specific mount points configured by user
-  - Collect usage stats with `psutil.disk_usage()`
-  - Detect missing expected mounts
-- Backend:
-  - Update server configuration to store expected mount points
-  - Add mount status to agent data response
-- Frontend:
-  - Add "Mounts" section to server monitor widget
-  - Show table of mount points with status
-  - Highlight missing/unmounted drives in red
-  - Add setting to configure expected mount points
-
-**Use Cases:**
-- Monitor NAS mounts (ensure network shares are connected)
-- Track external backup drives
-- Verify game server data drives are mounted
-- Alert if critical mounts fail
-
-**Related Files:**
-- `agent/monitor_agent.py`
-- `backend/app/api/v1/endpoints/servers.py`
-- `backend/app/models/server.py`
-- `frontend/src/components/widgets/ServerMonitorWidget.jsx`
-
 ---
 
 ## Weather Widget
@@ -275,6 +248,78 @@ Add ability to define priority keywords that bump matching articles to the top o
 - `backend/app/api/v1/endpoints/news.py`
 - `frontend/src/components/widgets/NewsWidget.jsx`
 - `frontend/src/components/widgets/widgetRegistry.js` (add priority_keywords to config schema)
+
+---
+
+## Network Status Widget
+
+### Enhancements (Phase 2)
+
+#### Packet Loss Tracking & Latency Graphs
+**Status:** Not Started
+**Priority:** High
+**Description:**
+Enhance the existing Network Status Widget (Phase 1 - ping targets) with packet loss tracking, latency graphs, and uptime monitoring.
+
+**Phase 1 Completed:**
+- ✓ Custom ping targets configuration
+- ✓ Multi-site ping tests
+- ✓ Real-time latency display
+
+**Phase 2 Requirements:**
+- **Packet Loss Tracking:**
+  - Calculate packet loss percentage per target
+  - Display packet loss % next to each ping target
+  - Highlight targets with packet loss > 5% in orange/red
+  - Track consecutive failed pings
+
+- **Latency Graphs:**
+  - Historical latency graph per target (last 24 hours)
+  - Mini sparkline graphs inline with each target
+  - Expandable detailed graph showing latency trends
+  - Color-coded zones (green: <50ms, yellow: 50-150ms, red: >150ms)
+  - Show min/max/avg latency stats
+
+- **Uptime Tracking:**
+  - Track uptime percentage (last 24h, 7d, 30d)
+  - Display uptime % in widget header
+  - Show downtime incidents timeline
+  - Calculate "nines" of availability (99.9%, 99.99%, etc.)
+  - Alert when uptime drops below threshold
+
+- **Enhanced Status Indicators:**
+  - Connection quality indicator (Excellent/Good/Fair/Poor)
+  - Visual status history bar showing last 24h (green/red segments)
+  - "Last outage" timestamp
+  - Total downtime duration
+
+**Technical Implementation:**
+- Backend:
+  - Store ping results in database: `ping_history` table
+    - Fields: timestamp, target, latency_ms, success, widget_id
+  - Endpoint to query historical data with time ranges
+  - Calculate packet loss and uptime metrics on backend
+  - Add background job to clean up old ping data (keep 30 days)
+
+- Frontend:
+  - Add Chart.js or Recharts for latency graphs
+  - Implement sparkline component for inline graphs
+  - Add expandable graph section per target
+  - Display packet loss % with color coding
+  - Show uptime stats prominently
+  - Add time range selector (24h/7d/30d)
+
+**Benefits:**
+- Identify intermittent connection issues
+- Track ISP reliability over time
+- Visual proof of network problems
+- Proactive alerting before total outages
+
+**Related Files:**
+- `backend/app/api/v1/endpoints/network.py`
+- `backend/app/models/network.py` (new)
+- `frontend/src/components/widgets/NetworkStatusWidget.jsx`
+- Database migration for ping_history table
 
 ---
 
@@ -356,4 +401,30 @@ _(Add more items here as needed)_
 
 ## Completed Items
 
-_(Move items here when completed)_
+### Server Monitor - Monitor Mounted Drives Status ✓
+**Completed:** 2026-02-10
+**Description:**
+Added drive/mount monitoring to Server Monitor widget with usage tracking and status indicators.
+
+**Implemented Features:**
+- User-configurable mount points per server
+- Drive usage stats (used/total/percentage)
+- Support for both actual mount points and directories
+- Visual indicators:
+  - Color-coded usage bars (green/yellow/red)
+  - Warning icon (⚠️) for unmounted drives
+  - Lock icon (🔒) for read-only mounts
+  - Emoji icons based on filesystem type (💾🏠📁🌐)
+- Add/delete drives via UI
+- Agent collection with psutil
+- Graceful handling of inaccessible paths
+
+**Files Modified:**
+- `agent/dash_agent.py` - Drive collection logic
+- `backend/app/models/server.py` - MonitoredDrive model
+- `backend/app/schemas/server.py` - Drive schemas
+- `backend/app/crud/server.py` - CRUD operations
+- `backend/app/api/v1/endpoints/servers.py` - API endpoints
+- `backend/alembic/versions/*_add_monitored_drives.py` - Migration
+- `frontend/src/components/widgets/ServerMonitorWidget.jsx` - UI components
+- `frontend/src/components/widgets/widgetRegistry.js` - Settings

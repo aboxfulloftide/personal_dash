@@ -5,6 +5,7 @@ from app.models.server import Server, ServerMetric, DockerContainer, ServerAlert
 from app.models.package import Package, PackageEvent, EmailAccount
 from app.models.fitness import WeightEntry
 from app.models.cache import APICache
+from app.models.finance import StockQuote, CryptoPrice
 
 __all__ = [
     "User",
@@ -22,4 +23,6 @@ __all__ = [
     "EmailAccount",
     "WeightEntry",
     "APICache",
+    "StockQuote",
+    "CryptoPrice",
 ]

@@ -2,9 +2,10 @@ import { useState, useEffect, useMemo } from 'react';
 import api from '../../services/api';
 
 // Minimum refresh intervals per provider (in seconds) to avoid rate limits
+// With database caching, we can use 20-minute intervals to reduce API calls
 const MIN_REFRESH_INTERVALS = {
-  coingecko: 60,   // 10-30 calls/min on free tier
-  coincap: 30,     // 200 requests/min, very generous
+  coingecko: 1200,  // 20 minutes (database fallback prevents blank widgets)
+  coincap: 1200,    // 20 minutes (very generous limit, but consistent with stocks)
 };
 
 const CURRENCY_SYMBOLS = {
@@ -23,6 +24,15 @@ function formatPercent(value) {
   if (value === null || value === undefined) return '';
   const sign = value >= 0 ? '+' : '';
   return `${sign}${value.toFixed(2)}%`;
+}
+
+function formatTimeAgo(date) {
+  const seconds = Math.floor((new Date() - date) / 1000);
+  if (seconds < 60) return 'just now';
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  return `${hours}h ago`;
 }
 
 function CryptoRow({ id, symbol, amount, price, change24h, currency, onRemove }) {
@@ -137,6 +147,7 @@ export default function CryptoWidget({ config, onConfigChange }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [showAddModal, setShowAddModal] = useState(false);
+  const [lastUpdated, setLastUpdated] = useState(null);
 
   const holdings = config.holdings || [];
   const currency = config.currency || 'usd';
@@ -164,6 +175,7 @@ export default function CryptoWidget({ config, onConfigChange }) {
         priceMap[p.id] = p;
       }
       setPrices(priceMap);
+      setLastUpdated(new Date());
     } catch (err) {
       setError(err.response?.data?.detail || 'Failed to fetch prices');
     } finally {
@@ -228,9 +240,16 @@ export default function CryptoWidget({ config, onConfigChange }) {
   return (
     <div className="h-full flex flex-col">
       <div className="flex items-center justify-between mb-2">
-        <span className="text-xs text-gray-500 dark:text-gray-400">
-          {loading ? 'Updating...' : error ? 'Error' : `${holdings.length} coins`}
-        </span>
+        <div className="flex flex-col">
+          <span className="text-xs text-gray-500 dark:text-gray-400">
+            {loading ? 'Updating...' : error ? 'Error' : `${holdings.length} coins`}
+          </span>
+          {lastUpdated && !loading && (
+            <span className="text-xs text-gray-400 dark:text-gray-500">
+              {formatTimeAgo(lastUpdated)}
+            </span>
+          )}
+        </div>
         <button
           onClick={() => setShowAddModal(true)}
           className="text-xs text-blue-600 hover:text-blue-700 dark:text-blue-400"

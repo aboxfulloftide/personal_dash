@@ -1,8 +1,16 @@
 import httpx
-from fastapi import APIRouter, HTTPException, Query
+from datetime import datetime, timedelta
+from fastapi import APIRouter, HTTPException, Query, Depends
 from pydantic import BaseModel
+from sqlalchemy.orm import Session
 
 from app.api.v1.deps import CurrentActiveUser
+from app.core.database import get_db
+from app.crud import finance as finance_crud
+
+# Minimum time between database records (15 minutes)
+# This ensures we store ~3-4 records per hour, not every API call
+MIN_STORAGE_INTERVAL_MINUTES = 15
 
 router = APIRouter(prefix="/finance", tags=["Finance"])
 
@@ -114,14 +122,24 @@ async def get_stock_quotes(
     symbols: str = Query(..., description="Comma-separated stock symbols"),
     provider: str = Query("yahoo", description="API provider"),
     api_key: str | None = Query(None, description="Optional API key"),
+    db: Session = Depends(get_db),
 ):
-    """Fetch stock quotes from external API."""
+    """
+    Fetch stock quotes with database fallback.
+
+    Flow:
+    1. Try to fetch from external API
+    2. If successful, store in DB and return
+    3. If fails, query last known price from DB
+    4. If no DB record, return null
+    """
     symbol_list = [s.strip().upper() for s in symbols.split(",") if s.strip()]
     if not symbol_list:
         raise HTTPException(status_code=400, detail="No symbols provided")
 
     quotes = []
     for symbol in symbol_list[:10]:  # Limit to 10 symbols
+        # Step 1: Try to fetch from external API
         try:
             if provider == "finnhub":
                 quote = await fetch_finnhub(symbol, api_key or "")
@@ -129,9 +147,41 @@ async def get_stock_quotes(
                 quote = await fetch_alphavantage(symbol, api_key or ALPHAVANTAGE_DEMO_KEY)
             else:  # yahoo default
                 quote = await fetch_yahoo(symbol)
+
+            # Step 2: Store successful fetch in DB (but only if last record is old enough)
+            last_quote = finance_crud.get_latest_stock_quote(db, symbol)
+            should_store = True
+
+            if last_quote and last_quote.recorded_at:
+                # Don't store if we have a recent record (within 15 minutes)
+                time_since_last = datetime.now() - last_quote.recorded_at
+                if time_since_last < timedelta(minutes=MIN_STORAGE_INTERVAL_MINUTES):
+                    should_store = False
+
+            if should_store:
+                finance_crud.create_stock_quote(
+                    db=db,
+                    symbol=symbol,
+                    price=quote.price,
+                    change_percent=quote.change_percent,
+                    provider=provider
+                )
+
             quotes.append(quote)
-        except Exception:
-            quotes.append(StockQuote(symbol=symbol, price=None, change_percent=None))
+
+        except Exception as e:
+            # Step 3: API failed, fallback to last known price
+            last_quote = finance_crud.get_latest_stock_quote(db, symbol)
+
+            if last_quote:
+                quotes.append(StockQuote(
+                    symbol=last_quote.symbol,
+                    price=last_quote.price,
+                    change_percent=last_quote.change_percent
+                ))
+            else:
+                # Step 4: No data available at all
+                quotes.append(StockQuote(symbol=symbol, price=None, change_percent=None))
 
     return StockResponse(quotes=quotes)
 
@@ -212,18 +262,72 @@ async def get_crypto_prices(
     currency: str = Query("usd", description="Currency for prices"),
     provider: str = Query("coingecko", description="API provider"),
     api_key: str | None = Query(None, description="Optional API key (not used currently)"),
+    db: Session = Depends(get_db),
 ):
-    """Fetch crypto prices from external API."""
+    """
+    Fetch crypto prices with database fallback.
+
+    Flow:
+    1. Try to fetch from external API
+    2. If successful, store in DB and return
+    3. If fails, query last known prices from DB
+    4. If no DB record, return null
+    """
     coin_list = [c.strip().lower() for c in coins.split(",") if c.strip()]
     if not coin_list:
         raise HTTPException(status_code=400, detail="No coins provided")
 
+    prices = []
+
+    # Step 1: Try to fetch from external API
     try:
         if provider == "coincap":
-            prices = await fetch_coincap(coin_list[:10], currency)
+            api_prices = await fetch_coincap(coin_list[:10], currency)
         else:  # coingecko default
-            prices = await fetch_coingecko(coin_list[:10], currency)
+            api_prices = await fetch_coingecko(coin_list[:10], currency)
+
+        # Step 2: Store successful fetches in DB (but only if last record is old enough)
+        for price in api_prices:
+            last_price = finance_crud.get_latest_crypto_price(db, price.id)
+            should_store = True
+
+            if last_price and last_price.recorded_at:
+                # Don't store if we have a recent record (within 15 minutes)
+                time_since_last = datetime.now() - last_price.recorded_at
+                if time_since_last < timedelta(minutes=MIN_STORAGE_INTERVAL_MINUTES):
+                    should_store = False
+
+            if should_store:
+                finance_crud.create_crypto_price(
+                    db=db,
+                    coin_id=price.id,
+                    symbol=price.symbol,
+                    price=price.price,
+                    change_24h=price.change_24h,
+                    provider=provider
+                )
+
+        prices = api_prices
+
     except Exception as e:
-        raise HTTPException(status_code=502, detail=f"Failed to fetch prices: {str(e)}")
+        # Step 3: API failed, fallback to last known prices
+        for coin_id in coin_list[:10]:
+            last_price = finance_crud.get_latest_crypto_price(db, coin_id)
+
+            if last_price:
+                prices.append(CryptoPrice(
+                    id=last_price.coin_id,
+                    symbol=last_price.symbol,
+                    price=last_price.price,
+                    change_24h=last_price.change_24h
+                ))
+            else:
+                # Step 4: No data available at all
+                prices.append(CryptoPrice(
+                    id=coin_id,
+                    symbol=CRYPTO_SYMBOLS.get(coin_id, coin_id.upper()[:4]),
+                    price=None,
+                    change_24h=None
+                ))
 
     return CryptoResponse(prices=prices)
