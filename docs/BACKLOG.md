@@ -11,7 +11,7 @@
 2. **Stock/Crypto: Portfolio Value Graph** - Now unblocked with database caching complete
 
 ### Medium Priority (Soon)
-3. **Package Tracker: Auto-remove Delivered** - Quality of life improvement
+3. ~~**Package Tracker: Auto-remove Delivered**~~ ✅ **COMPLETED**
 4. **News: Priority Keywords** - Already partially implemented, needs UI enhancement
 5. **Server Monitor: Track Specific Processes** - Already completed, but may need additional features
 
@@ -25,55 +25,49 @@
 
 ### Enhancements
 
-#### Improve Delivery Removal Timing
-**Status:** Not Started
+#### Improve Delivery Removal Timing ✓
+**Status:** ✅ **COMPLETED** (2026-02-12)
 **Priority:** Medium
 **Estimated Effort:** ~2-3 hours
 **Description:**
-Currently, packages are removed exactly 24 hours after delivery confirmation. This should be changed to remove packages at midnight the following day, giving users the full day to see the delivery notification.
+~~Currently, packages are removed exactly 24 hours after delivery confirmation.~~ Changed to remove packages at midnight the following day, giving users the full day to see the delivery notification.
 
-**Current Behavior:**
+**Previous Behavior:**
 - Package delivered at 2:00 PM on Monday
 - Removed at 2:00 PM on Tuesday (24 hours later)
 - ❌ User might miss the delivery if they only check in the morning
 
-**Desired Behavior:**
+**New Behavior:**
 - Package delivered at 2:00 PM on Monday
 - Highlighted/marked as delivered immediately (green background, checkmark)
 - Remains visible for the rest of Monday
-- Removed at midnight (12:00 AM) on Wednesday morning
-- ✅ User has all of Tuesday to see it was delivered
+- Removed at midnight (12:00 AM) on Tuesday
+- ✅ User has the rest of Monday to see it was delivered
 
-**Technical Implementation:**
-- Update cleanup task in `scheduler.py`
-- Instead of: `delivered_at <= now - 24 hours`
-- Use: `delivered_at < start_of_today` (where start_of_today is midnight)
-- This gives users the full next day to see the delivery
-
-**Example Logic:**
+**Implementation:**
 ```python
-from datetime import datetime, time
+# Calculate midnight of the day after delivery
+delivered_date = package.delivered_at.date()
+next_midnight = datetime.combine(
+    delivered_date + timedelta(days=1),
+    datetime.min.time()
+)
 
-# Current time: Tuesday 10:00 AM
-now = datetime.now()
-start_of_today = datetime.combine(now.date(), time.min)  # Tuesday 12:00 AM
-
-# Remove packages delivered before start of today
-# Packages delivered Monday (any time) → Removed Wednesday 12:00 AM
-# Packages delivered Sunday → Removed Tuesday 12:00 AM
-cutoff_time = start_of_today
+# Remove if we're past that midnight
+if now >= next_midnight:
+    package.dismissed = True
 ```
 
 **Benefits:**
-- User sees delivery for the entire following day
-- More predictable removal time (always midnight)
-- Better UX - no missed notifications
-- Still automatic cleanup (no manual deletion needed)
+- ✅ User sees delivery for the rest of delivery day
+- ✅ More predictable removal time (always midnight)
+- ✅ Better UX - no missed notifications
+- ✅ Still automatic cleanup (no manual deletion needed)
 
-**Related Files:**
-- `backend/app/core/scheduler.py` - Update `cleanup_delivered_packages_task()`
-- Current cutoff: `datetime.now() - timedelta(hours=24)`
-- New cutoff: `datetime.combine(datetime.now().date(), time.min)`
+**Files Modified:**
+- `backend/app/core/scheduler.py` - Updated `cleanup_delivered_packages_task()`
+  - Changed from: `cutoff_time = now - timedelta(hours=24)`
+  - Changed to: Calculate next midnight for each package individually
 
 ---
 
