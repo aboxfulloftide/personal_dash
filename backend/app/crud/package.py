@@ -126,23 +126,32 @@ def mark_package_delivered_by_tracking(
             Package.dismissed == False,
         )
     )
-    package = result.scalar_one_or_none()
+    packages = list(result.scalars().all())
 
-    if package:
-        print(f"  ✓ Found matching package: {package.description}")
-        print(f"  Package tracking: {package.tracking_number}")
-        print(f"  Already delivered: {package.delivered}")
+    if packages:
+        if len(packages) > 1:
+            print(f"  ⚠ Found {len(packages)} duplicate packages with same tracking number!")
 
-        if not package.delivered:
-            package.delivered = True
-            package.delivered_at = datetime.now(timezone.utc).replace(tzinfo=None)
-            package.status = "Delivered"
+        # Mark all matching packages as delivered (handles duplicates)
+        delivered_count = 0
+        for package in packages:
+            print(f"  ✓ Found package: {package.description}")
+            print(f"    Package tracking: {package.tracking_number}")
+            print(f"    Already delivered: {package.delivered}")
+
+            if not package.delivered:
+                package.delivered = True
+                package.delivered_at = datetime.now(timezone.utc).replace(tzinfo=None)
+                package.status = "Delivered"
+                delivered_count += 1
+
+        if delivered_count > 0:
             db.commit()
-            db.refresh(package)
-            print(f"  ✓ Marked as delivered!")
-            return package
+            print(f"  ✓ Marked {delivered_count} package(s) as delivered!")
         else:
-            print(f"  ⚠ Package already marked as delivered")
+            print(f"  ⚠ All packages already marked as delivered")
+
+        return packages[0]  # Return first package
     else:
         print(f"  ✗ No matching package found")
         # Show what packages exist for this user
