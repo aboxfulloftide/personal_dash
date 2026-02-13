@@ -91,7 +91,32 @@ personal-dash/
 
 ## Recent Enhancements
 
-### Widget Alert System (Completed)
+### Dashboard UX Improvements (Completed - 2026-02-12)
+**Silent Background Refresh**
+- Background polling for alerts without loading states or flashing
+- Polling interval: 60 seconds (previously caused jarring reloads)
+- Keeps current data visible while fetching updates
+- Smooth UX for users with many widgets
+
+**Files Modified:**
+- `frontend/src/hooks/useDashboard.js` - Added silent mode for background refreshes
+
+---
+
+### Package Tracker Enhancements (Completed - 2026-02-12)
+**Delivery Detection Improvements**
+- Fixed duplicate package handling (marks all duplicates as delivered)
+- Enhanced delivery confirmation detection from emails
+- Debug logging for troubleshooting delivery matching
+- Midnight cleanup instead of 24-hour removal
+
+**Files Modified:**
+- `backend/app/crud/package.py` - Duplicate handling, debug logging
+- `backend/app/core/scheduler.py` - Midnight cleanup logic, timing logs
+
+---
+
+### Widget Alert System (Completed - 2026-02-12)
 **Overview:** Framework allowing any widget to display priority notifications by moving to top of dashboard until acknowledged.
 
 **Features:**
