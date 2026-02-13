@@ -114,6 +114,10 @@ def mark_package_delivered_by_tracking(
     Find a package by tracking number and mark it as delivered.
     Returns the updated package if found, None otherwise.
     """
+    print(f"[DEBUG] Attempting to mark package delivered:")
+    print(f"  User ID: {user_id}")
+    print(f"  Tracking number: {tracking_number}")
+
     # Case-insensitive search for tracking number
     result = db.execute(
         select(Package).where(
@@ -124,12 +128,32 @@ def mark_package_delivered_by_tracking(
     )
     package = result.scalar_one_or_none()
 
-    if package and not package.delivered:
-        package.delivered = True
-        package.delivered_at = datetime.now(timezone.utc).replace(tzinfo=None)
-        package.status = "Delivered"
-        db.commit()
-        db.refresh(package)
-        return package
+    if package:
+        print(f"  ✓ Found matching package: {package.description}")
+        print(f"  Package tracking: {package.tracking_number}")
+        print(f"  Already delivered: {package.delivered}")
+
+        if not package.delivered:
+            package.delivered = True
+            package.delivered_at = datetime.now(timezone.utc).replace(tzinfo=None)
+            package.status = "Delivered"
+            db.commit()
+            db.refresh(package)
+            print(f"  ✓ Marked as delivered!")
+            return package
+        else:
+            print(f"  ⚠ Package already marked as delivered")
+    else:
+        print(f"  ✗ No matching package found")
+        # Show what packages exist for this user
+        all_packages = db.execute(
+            select(Package).where(
+                Package.user_id == user_id,
+                Package.dismissed == False,
+            )
+        ).scalars().all()
+        print(f"  Available packages for user {user_id}:")
+        for pkg in all_packages:
+            print(f"    - {pkg.tracking_number}: {pkg.description}")
 
     return package
