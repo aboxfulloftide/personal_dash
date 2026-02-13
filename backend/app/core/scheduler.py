@@ -170,6 +170,14 @@ async def cleanup_delivered_packages_task():
                     datetime.min.time()
                 )
 
+                logger.info(
+                    f"Checking package: {package.tracking_number} - "
+                    f"delivered_at={package.delivered_at}, "
+                    f"next_midnight={next_midnight}, "
+                    f"now={now}, "
+                    f"should_remove={now >= next_midnight}"
+                )
+
                 # Remove if we're past that midnight
                 if now >= next_midnight:
                     package.dismissed = True
