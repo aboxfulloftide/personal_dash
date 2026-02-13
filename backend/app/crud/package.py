@@ -165,4 +165,4 @@ def mark_package_delivered_by_tracking(
         for pkg in all_packages:
             print(f"    - {pkg.tracking_number}: {pkg.description}")
 
-    return package
+    return None
