@@ -9,18 +9,27 @@ export function useDashboard() {
   const [saving, setSaving] = useState(false);
 
   // Load dashboard from API
-  const loadDashboard = useCallback(async () => {
+  const loadDashboard = useCallback(async (options = {}) => {
+    const { silent = false } = options;
+
     try {
-      setLoading(true);
+      // Only show loading spinner for initial load, not background refreshes
+      if (!silent) {
+        setLoading(true);
+      }
       const response = await api.get('/dashboard/layout');
       setWidgets(response.data.widgets || []);
       setLayout(response.data.layout || []);
     } catch (error) {
       console.error('Failed to load dashboard:', error);
-      setWidgets([]);
-      setLayout([]);
+      if (!silent) {
+        setWidgets([]);
+        setLayout([]);
+      }
     } finally {
-      setLoading(false);
+      if (!silent) {
+        setLoading(false);
+      }
     }
   }, []);
 
@@ -131,12 +140,13 @@ export function useDashboard() {
   }, [loadDashboard]);
 
   useEffect(() => {
+    // Initial load with loading spinner
     loadDashboard();
 
-    // Poll for updates every 30 seconds to detect alerts triggered externally
+    // Poll for updates every 60 seconds (silent background refresh)
     const pollInterval = setInterval(() => {
-      loadDashboard();
-    }, 30000); // 30 seconds
+      loadDashboard({ silent: true });
+    }, 60000); // 60 seconds
 
     return () => clearInterval(pollInterval);
   }, [loadDashboard]);
