@@ -6,6 +6,7 @@ A self-hosted, multi-user personal dashboard that aggregates various data source
 
 - Multi-user support with JWT authentication
 - Drag-and-drop customizable widget grid
+- **Widget alert system** with priority notifications and visual indicators
 - Dark mode support
 - Mobile responsive design
 - Plugin/widget architecture for extensibility
@@ -226,6 +227,62 @@ Display current weather conditions and 5-day forecast for any location.
 | Calendar | Google Calendar integration |
 | News Headlines | RSS/News API aggregation |
 | Smart Home | Home Assistant integration |
+
+## Widget Alert System
+
+The dashboard includes a built-in alert system that allows widgets to display important notifications by moving to the top of the screen until acknowledged.
+
+### Features
+
+- **Three severity levels**: Critical (🔴), Warning (⚠️), Info (ℹ️)
+- **Visual indicators**: Pulsing colored borders and alert banners
+- **Automatic positioning**: Alerted widgets move to dashboard top
+- **Auto-refresh**: Dashboard polls every 30 seconds to detect new alerts
+- **One-click acknowledgment**: Clear alerts and return widget to original position
+
+### Quick Start
+
+Trigger an alert from your widget:
+
+**Python (Backend):**
+```python
+from app.crud.dashboard import trigger_widget_alert
+
+trigger_widget_alert(
+    db=db,
+    user_id=current_user.id,
+    widget_id="widget-123456",
+    severity="critical",  # "critical", "warning", or "info"
+    message="Server is down!"
+)
+```
+
+**JavaScript (Frontend):**
+```javascript
+import api from '../../services/api';
+
+await api.post(`/widgets/${widgetId}/alert`, {
+  severity: 'warning',
+  message: 'Temperature exceeds threshold!'
+});
+```
+
+### Testing Alerts
+
+Use the included test script:
+
+```bash
+# List your widgets
+python3 test_alert.py list-widgets
+
+# Trigger an alert
+python3 test_alert.py trigger widget-1234567890 critical "Test alert!"
+
+# Acknowledge an alert
+python3 test_alert.py acknowledge widget-1234567890
+```
+
+**Full documentation:** See [docs/WIDGET_ALERTS.md](docs/WIDGET_ALERTS.md) for complete API reference, examples, and best practices.
 
 ## Development
 

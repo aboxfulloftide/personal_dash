@@ -29,6 +29,28 @@ function truncateTracking(tracking) {
   return `${tracking.slice(0, 6)}...${tracking.slice(-4)}`;
 }
 
+function getEmailColor(email) {
+  if (!email) return 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300';
+
+  // Simple hash function to get consistent color for each email
+  let hash = 0;
+  for (let i = 0; i < email.length; i++) {
+    hash = ((hash << 5) - hash) + email.charCodeAt(i);
+    hash = hash & hash; // Convert to 32bit integer
+  }
+
+  // Map to one of 5 colors with better dark mode visibility
+  const colors = [
+    'bg-blue-100 text-blue-700 dark:bg-blue-500/20 dark:text-blue-300 dark:border dark:border-blue-400/50',     // Blue
+    'bg-green-100 text-green-700 dark:bg-green-500/20 dark:text-green-300 dark:border dark:border-green-400/50', // Green
+    'bg-purple-100 text-purple-700 dark:bg-purple-500/20 dark:text-purple-300 dark:border dark:border-purple-400/50', // Purple
+    'bg-orange-100 text-orange-700 dark:bg-orange-500/20 dark:text-orange-300 dark:border dark:border-orange-400/50', // Orange
+    'bg-pink-100 text-pink-700 dark:bg-pink-500/20 dark:text-pink-300 dark:border dark:border-pink-400/50',     // Pink
+  ];
+
+  return colors[Math.abs(hash) % colors.length];
+}
+
 function CarrierBadge({ carrier }) {
   const info = CARRIERS[carrier] || CARRIERS.other;
   return (
@@ -38,7 +60,7 @@ function CarrierBadge({ carrier }) {
   );
 }
 
-function PackageCard({ pkg, onDelete, onRequestDelete }) {
+function PackageCard({ pkg, onDelete, onRequestDelete, onViewEmail }) {
   const handleDelete = (e) => {
     console.log('Delete button clicked for package:', pkg.id);
     e.preventDefault(); // Prevent opening tracking link
@@ -46,7 +68,19 @@ function PackageCard({ pkg, onDelete, onRequestDelete }) {
     onRequestDelete(pkg);
   };
 
+  const handleViewEmail = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    onViewEmail(pkg);
+  };
+
   const getTrackingUrl = () => {
+    // Use stored tracking URL if available (extracted from email)
+    if (pkg.tracking_url) {
+      return pkg.tracking_url;
+    }
+
+    // Otherwise, generate URL based on carrier
     const carrier = pkg.carrier.toLowerCase();
     const trackingNumber = encodeURIComponent(pkg.tracking_number);
 
@@ -55,7 +89,7 @@ function PackageCard({ pkg, onDelete, onRequestDelete }) {
       ups: `https://www.ups.com/track?tracknum=${trackingNumber}`,
       fedex: `https://www.fedex.com/fedextrack/?tracknumbers=${trackingNumber}`,
       amazon: pkg.tracking_number.includes('-')
-        ? `https://www.amazon.com/progress-tracker/package/ref=ppx_yo_dt_b_track_package?_encoding=UTF8&orderId=${pkg.tracking_number}`
+        ? `https://www.amazon.com/progress-tracker/package?_encoding=UTF8&orderId=${pkg.tracking_number}`
         : `https://track.amazon.com/tracking/${trackingNumber}`,
       dhl: `https://www.dhl.com/en/express/tracking.html?AWB=${trackingNumber}`,
     };
@@ -77,7 +111,7 @@ function PackageCard({ pkg, onDelete, onRequestDelete }) {
         rel="noopener noreferrer"
         className="block hover:opacity-80 transition-opacity"
       >
-        <div className="flex items-center gap-2 mb-1">
+        <div className="flex items-center gap-2 mb-1 flex-wrap">
           <CarrierBadge carrier={pkg.carrier} />
           <span className="text-xs text-gray-500 dark:text-gray-400 font-mono">
             {truncateTracking(pkg.tracking_number)}
@@ -85,6 +119,14 @@ function PackageCard({ pkg, onDelete, onRequestDelete }) {
           <span className="text-xs text-gray-400 dark:text-gray-500">↗</span>
           {pkg.delivered && (
             <span className="text-xs text-green-600 dark:text-green-400">✓</span>
+          )}
+          {pkg.email_source && (
+            <span
+              className={`text-xs px-1.5 py-0.5 rounded font-medium ${getEmailColor(pkg.email_source)}`}
+              title={`From: ${pkg.email_source}`}
+            >
+              📧
+            </span>
           )}
         </div>
         {pkg.description && (
@@ -99,13 +141,24 @@ function PackageCard({ pkg, onDelete, onRequestDelete }) {
           )}
         </div>
       </a>
-      <button
-        onClick={handleDelete}
-        className="absolute top-1 right-1 p-1 text-red-500 hover:text-red-700 hover:bg-red-100 dark:text-red-400 dark:hover:text-red-300 dark:hover:bg-red-900/30 rounded transition-colors"
-        title="Remove from tracking"
-      >
-        ✕
-      </button>
+      <div className="absolute top-1 right-1 flex gap-1">
+        {pkg.email_source && (
+          <button
+            onClick={handleViewEmail}
+            className="p-1 text-blue-500 hover:text-blue-700 hover:bg-blue-100 dark:text-blue-400 dark:hover:text-blue-300 dark:hover:bg-blue-900/30 rounded transition-colors text-xs"
+            title="View original email"
+          >
+            📧
+          </button>
+        )}
+        <button
+          onClick={handleDelete}
+          className="p-1 text-red-500 hover:text-red-700 hover:bg-red-100 dark:text-red-400 dark:hover:text-red-300 dark:hover:bg-red-900/30 rounded transition-colors"
+          title="Remove from tracking"
+        >
+          ✕
+        </button>
+      </div>
     </div>
   );
 }
@@ -216,6 +269,96 @@ function AddPackageModal({ isOpen, onClose, onAdd }) {
             </button>
           </div>
         </form>
+      </div>
+    </div>
+  );
+}
+
+function EmailPreviewModal({ isOpen, onClose, package: pkg }) {
+  if (!isOpen || !pkg) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center">
+      <div className="absolute inset-0 bg-black/50" onClick={onClose} />
+      <div className="relative bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-2xl w-full mx-4 max-h-[80vh] overflow-y-auto">
+        <div className="p-4 border-b border-gray-200 dark:border-gray-700 sticky top-0 bg-white dark:bg-gray-800">
+          <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Email Preview</h3>
+          <button
+            onClick={onClose}
+            className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+          >
+            ✕
+          </button>
+        </div>
+
+        <div className="p-4 space-y-4">
+          {/* Email account badge */}
+          <div className="flex items-center gap-2 text-sm">
+            <span className="text-gray-500 dark:text-gray-400">From Email Account:</span>
+            <span className={`px-2 py-1 rounded font-medium ${getEmailColor(pkg.email_source)}`}>
+              📧 {pkg.email_source}
+            </span>
+          </div>
+
+          {/* Sender */}
+          {pkg.email_sender && (
+            <div>
+              <div className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Sender:</div>
+              <div className="text-sm text-gray-600 dark:text-gray-400 bg-gray-50 dark:bg-gray-900/50 p-2 rounded">
+                {pkg.email_sender}
+              </div>
+            </div>
+          )}
+
+          {/* Subject */}
+          {pkg.email_subject && (
+            <div>
+              <div className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Subject:</div>
+              <div className="text-sm text-gray-600 dark:text-gray-400 bg-gray-50 dark:bg-gray-900/50 p-2 rounded">
+                {pkg.email_subject}
+              </div>
+            </div>
+          )}
+
+          {/* Date */}
+          {pkg.email_date && (
+            <div>
+              <div className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Date:</div>
+              <div className="text-sm text-gray-600 dark:text-gray-400 bg-gray-50 dark:bg-gray-900/50 p-2 rounded">
+                {new Date(pkg.email_date).toLocaleString()}
+              </div>
+            </div>
+          )}
+
+          {/* Body snippet */}
+          {pkg.email_body_snippet && (
+            <div>
+              <div className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Body Preview:</div>
+              <div className="text-sm text-gray-600 dark:text-gray-400 bg-gray-50 dark:bg-gray-900/50 p-3 rounded max-h-64 overflow-y-auto whitespace-pre-wrap">
+                {pkg.email_body_snippet}
+              </div>
+            </div>
+          )}
+
+          {/* Tracking info */}
+          <div className="border-t border-gray-200 dark:border-gray-700 pt-4">
+            <div className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Package Details:</div>
+            <div className="space-y-1 text-sm text-gray-600 dark:text-gray-400">
+              <div>Tracking: <span className="font-mono">{pkg.tracking_number}</span></div>
+              <div>Carrier: {pkg.carrier.toUpperCase()}</div>
+              {pkg.description && <div>Description: {pkg.description}</div>}
+            </div>
+          </div>
+        </div>
+
+        <div className="p-4 border-t border-gray-200 dark:border-gray-700 flex justify-end">
+          <button
+            onClick={onClose}
+            className="px-4 py-2 bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 rounded-md text-sm"
+          >
+            Close
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -548,6 +691,7 @@ export default function PackageTrackerWidget({ config }) {
   const [emailAccounts, setEmailAccounts] = useState([]);
   const [editingCredentialId, setEditingCredentialId] = useState(null);
   const [packageToDelete, setPackageToDelete] = useState(null);
+  const [packageToViewEmail, setPackageToViewEmail] = useState(null);
 
   const { data, loading, error, refresh } = useWidgetData({
     endpoint: '/packages',
@@ -653,7 +797,9 @@ export default function PackageTrackerWidget({ config }) {
               >
                 <div className="flex items-center justify-between mb-1">
                   <span className="flex items-center gap-1 flex-1 min-w-0">
-                    <span>📧</span>
+                    <span className={`px-1.5 py-0.5 rounded font-medium ${getEmailColor(account.email_address)}`}>
+                      📧
+                    </span>
                     <span className="truncate" title={account.email_address}>
                       {account.email_address}
                     </span>
@@ -746,6 +892,7 @@ export default function PackageTrackerWidget({ config }) {
               pkg={pkg}
               onDelete={handleDeletePackage}
               onRequestDelete={setPackageToDelete}
+              onViewEmail={setPackageToViewEmail}
             />
           ))
         )}
@@ -768,6 +915,12 @@ export default function PackageTrackerWidget({ config }) {
           fetchEmailAccounts();
         }}
         credentialId={editingCredentialId}
+      />
+
+      <EmailPreviewModal
+        isOpen={packageToViewEmail !== null}
+        onClose={() => setPackageToViewEmail(null)}
+        package={packageToViewEmail}
       />
 
       {/* Delete confirmation modal */}

@@ -1,5 +1,6 @@
 import { Suspense, lazy, useState } from 'react';
 import { getWidget } from './widgetRegistry';
+import AlertBanner from '../alerts/AlertBanner';
 
 function WidgetLoader() {
   return (
@@ -34,9 +35,14 @@ function RefreshIcon() {
 export default function WidgetContainer({
   type,
   config = {},
+  widgetId,
+  alertActive = false,
+  alertSeverity = null,
+  alertMessage = null,
   onRemove,
   onSettings,
   onConfigChange,
+  onAcknowledge,
   isEditing = false
 }) {
   const [error, setError] = useState(null);
@@ -50,8 +56,17 @@ export default function WidgetContainer({
     setRetryKey(prev => prev + 1);
   };
 
+  // Alert border styling based on severity
+  const alertBorderClass = alertActive
+    ? alertSeverity === 'critical'
+      ? 'ring-4 ring-red-500 dark:ring-red-600 animate-pulse'
+      : alertSeverity === 'warning'
+      ? 'ring-4 ring-orange-500 dark:ring-orange-600 animate-pulse'
+      : 'ring-4 ring-blue-500 dark:ring-blue-600 animate-pulse'
+    : '';
+
   return (
-    <div className="h-full flex flex-col bg-white dark:bg-gray-800 rounded-lg shadow overflow-hidden">
+    <div className={`h-full flex flex-col bg-white dark:bg-gray-800 rounded-lg shadow overflow-hidden ${alertBorderClass}`}>
       {/* Widget Header */}
       <div className={`flex items-center justify-between px-3 py-2 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/80 ${
         isEditing ? 'widget-drag-handle cursor-move' : ''
@@ -88,6 +103,14 @@ export default function WidgetContainer({
 
       {/* Widget Content */}
       <div className="flex-1 overflow-auto p-3 scrollbar-hide">
+        {alertActive && (
+          <AlertBanner
+            severity={alertSeverity}
+            message={alertMessage}
+            widgetId={widgetId}
+            onAcknowledge={onAcknowledge}
+          />
+        )}
         {error ? (
           <WidgetError error={error} onRetry={handleRetry} />
         ) : (

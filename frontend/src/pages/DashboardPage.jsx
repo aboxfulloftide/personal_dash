@@ -17,7 +17,8 @@ export default function DashboardPage() {
     addWidget,
     removeWidget,
     updateLayout,
-    updateWidgetConfig
+    updateWidgetConfig,
+    acknowledgeAlert
   } = useDashboard();
 
   const handleWidgetSettings = (widgetId) => {
@@ -74,6 +75,7 @@ export default function DashboardPage() {
             onRemoveWidget={removeWidget}
             onWidgetSettings={handleWidgetSettings}
             onWidgetConfigChange={updateWidgetConfig}
+            onAcknowledgeAlert={acknowledgeAlert}
             isEditing={isEditing}
           />
         )}

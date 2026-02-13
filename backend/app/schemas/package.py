@@ -18,6 +18,12 @@ class PackageCreate(BaseModel):
     tracking_number: str = Field(..., min_length=1, max_length=100)
     carrier: Carrier
     description: Optional[str] = Field(None, max_length=255)
+    email_source: Optional[str] = Field(None, max_length=255)
+    email_subject: Optional[str] = Field(None, max_length=500)
+    email_sender: Optional[str] = Field(None, max_length=255)
+    email_date: Optional[str] = Field(None, max_length=100)
+    email_body_snippet: Optional[str] = None
+    tracking_url: Optional[str] = None
 
 
 class PackageUpdate(BaseModel):
@@ -39,6 +45,12 @@ class PackageResponse(BaseModel):
     delivered: bool
     delivered_at: Optional[datetime]
     source: str
+    email_source: Optional[str]
+    email_subject: Optional[str]
+    email_sender: Optional[str]
+    email_date: Optional[str]
+    email_body_snippet: Optional[str]
+    tracking_url: Optional[str]
     created_at: datetime
     updated_at: datetime
 

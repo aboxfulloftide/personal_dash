@@ -18,10 +18,25 @@ class TrackingNumber(BaseModel):
     found_in_subject: str
     found_in_email: str  # Email address or sender
     found_date: str  # ISO datetime
+    email_sender: str  # Full sender string (e.g., "Amazon.com <order@amazon.com>")
+    email_body_snippet: str  # First 1000 chars of email body
+    tracking_url: Optional[str] = None  # Actual tracking URL from email
+
+
+class DeliveryConfirmation(BaseModel):
+    tracking_number: str
+    carrier: str
+    delivered_date: str  # ISO datetime from email
+    found_in_subject: str
+    found_in_email: str
+    email_sender: str
+    email_body_snippet: str
+    tracking_url: Optional[str] = None
 
 
 class EmailScanResponse(BaseModel):
     tracking_numbers: list[TrackingNumber]
+    delivery_confirmations: list[DeliveryConfirmation]
     emails_scanned: int
     scan_date: str
 
@@ -160,6 +175,104 @@ def extract_email_body(msg):
     return body
 
 
+def is_delivery_confirmation(subject: str, body: str, sender: str) -> bool:
+    """
+    Determine if an email is a delivery confirmation.
+    Checks subject line and body for delivery keywords.
+    """
+    text_to_check = f"{subject} {body}".lower()
+
+    # Delivery confirmation patterns
+    delivery_patterns = [
+        'delivered:',  # Amazon style: "Delivered: Package Name"
+        'was delivered',
+        'has been delivered',
+        'delivery complete',
+        'successfully delivered',
+        'package delivered',
+        'your delivery',
+        'delivered to',
+        'left at',
+        'handed directly to resident',
+    ]
+
+    # Check if any delivery pattern matches
+    return any(pattern in text_to_check for pattern in delivery_patterns)
+
+
+def clean_email_subject(subject: str) -> str:
+    """
+    Clean up email subject by removing spam prefixes and common email artifacts.
+    """
+    if not subject:
+        return subject
+
+    # Remove common spam/email prefixes (case-insensitive)
+    prefixes_to_remove = [
+        r'\*\*\*SPAM\*\*\*\s*',  # ***SPAM***
+        r'\[SPAM\]\s*',           # [SPAM]
+        r'SPAM:\s*',              # SPAM:
+        r'\*\*SPAM\*\*\s*',       # **SPAM**
+        r'Re:\s*',                # Re:
+        r'Fwd:\s*',               # Fwd:
+        r'FW:\s*',                # FW:
+    ]
+
+    cleaned = subject
+    for prefix_pattern in prefixes_to_remove:
+        cleaned = re.sub(prefix_pattern, '', cleaned, flags=re.IGNORECASE)
+
+    # Remove leading/trailing whitespace
+    cleaned = cleaned.strip()
+
+    return cleaned
+
+
+def extract_tracking_url(body: str, carrier: str) -> Optional[str]:
+    """
+    Extract tracking URL from email body based on carrier.
+    Returns the first valid tracking URL found, or None.
+    """
+    if not body:
+        return None
+
+    # Define URL patterns for each carrier
+    url_patterns = {
+        'Amazon': [
+            r'https://www\.amazon\.com/progress-tracker/package[^\s<>"]+',
+            r'https://www\.amazon\.com/gp/css/shiptrack/[^\s<>"]+',
+        ],
+        'USPS': [
+            r'https://tools\.usps\.com/go/TrackConfirmAction[^\s<>"]+',
+            r'https://www\.usps\.com/track[^\s<>"]+',
+        ],
+        'UPS': [
+            r'https://www\.ups\.com/track[^\s<>"]+',
+            r'https://wwwapps\.ups\.com/tracking/tracking\.cgi[^\s<>"]+',
+        ],
+        'FedEx': [
+            r'https://www\.fedex\.com/fedextrack[^\s<>"]+',
+            r'https://www\.fedex\.com/apps/fedextrack[^\s<>"]+',
+        ],
+        'DHL': [
+            r'https://www\.dhl\.com/[^\s<>"]*tracking[^\s<>"]+',
+        ],
+    }
+
+    # Get patterns for this carrier
+    patterns = url_patterns.get(carrier, [])
+
+    for pattern in patterns:
+        match = re.search(pattern, body, re.IGNORECASE)
+        if match:
+            url = match.group(0)
+            # Clean up any trailing characters that might have been captured
+            url = url.rstrip('.,;:')
+            return url
+
+    return None
+
+
 async def scan_imap_email(
     imap_server: str,
     imap_port: int,
@@ -167,9 +280,10 @@ async def scan_imap_email(
     password: str,
     days_back: int = 30,
 ) -> EmailScanResponse:
-    """Scan IMAP email for tracking numbers."""
+    """Scan IMAP email for tracking numbers and delivery confirmations."""
 
     tracking_numbers = []
+    delivery_confirmations = []
     emails_scanned = 0
 
     try:
@@ -239,15 +353,8 @@ async def scan_imap_email(
                     text_to_search = f"{subject}\n{body}"
                     found = extract_tracking_numbers(text_to_search)
 
-                    # Check if package is already delivered (skip these)
-                    text_lower = text_to_search.lower()
-                    is_delivered = any(keyword in text_lower for keyword in [
-                        'delivered',
-                        'was delivered',
-                        'has been delivered',
-                        'delivery complete',
-                        'successfully delivered'
-                    ])
+                    # Check if this is a delivery confirmation
+                    is_delivered = is_delivery_confirmation(subject, body, sender)
 
                     # Debug logging
                     if 'amazon' in sender.lower() or 'amazon' in subject.lower():
@@ -256,20 +363,37 @@ async def scan_imap_email(
                         print(f"  Subject: {subject}")
                         print(f"  Body preview: {body[:500]}")
                         print(f"  Tracking numbers found: {found}")
-                        print(f"  Is delivered: {is_delivered}")
+                        print(f"  Is delivery confirmation: {is_delivered}")
 
-                    # Skip if already delivered
-                    if is_delivered:
-                        continue
-
+                    # Process found tracking numbers
                     for tracking, carrier in found:
-                        tracking_numbers.append(TrackingNumber(
-                            tracking_number=tracking,
-                            carrier=carrier,
-                            found_in_subject=subject[:100],  # Truncate
-                            found_in_email=sender,
-                            found_date=datetime.now().isoformat(),
-                        ))
+                        # Try to extract tracking URL from email body
+                        tracking_url = extract_tracking_url(body, carrier)
+
+                        if is_delivered:
+                            # Add to delivery confirmations
+                            delivery_confirmations.append(DeliveryConfirmation(
+                                tracking_number=tracking,
+                                carrier=carrier,
+                                delivered_date=date_str or datetime.now().isoformat(),
+                                found_in_subject=subject[:100],
+                                found_in_email=sender,
+                                email_sender=sender,
+                                email_body_snippet=body[:1000],
+                                tracking_url=tracking_url,
+                            ))
+                        else:
+                            # Add to new shipments
+                            tracking_numbers.append(TrackingNumber(
+                                tracking_number=tracking,
+                                carrier=carrier,
+                                found_in_subject=subject[:100],
+                                found_in_email=sender,
+                                found_date=datetime.now().isoformat(),
+                                email_sender=sender,
+                                email_body_snippet=body[:1000],
+                                tracking_url=tracking_url,
+                            ))
 
     except HTTPException:
         raise
@@ -281,6 +405,7 @@ async def scan_imap_email(
 
     return EmailScanResponse(
         tracking_numbers=tracking_numbers,
+        delivery_confirmations=delivery_confirmations,
         emails_scanned=emails_scanned,
         scan_date=datetime.now().isoformat(),
     )

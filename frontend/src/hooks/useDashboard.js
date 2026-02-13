@@ -119,8 +119,26 @@ export function useDashboard() {
     saveDashboard(newWidgets, layout);
   }, [widgets, layout, saveDashboard]);
 
+  // Acknowledge alert
+  const acknowledgeAlert = useCallback(async (widgetId) => {
+    try {
+      await api.post(`/widgets/${widgetId}/acknowledge`);
+      // Reload dashboard to get updated widget state
+      await loadDashboard();
+    } catch (error) {
+      console.error('Failed to acknowledge alert:', error);
+    }
+  }, [loadDashboard]);
+
   useEffect(() => {
     loadDashboard();
+
+    // Poll for updates every 30 seconds to detect alerts triggered externally
+    const pollInterval = setInterval(() => {
+      loadDashboard();
+    }, 30000); // 30 seconds
+
+    return () => clearInterval(pollInterval);
   }, [loadDashboard]);
 
   return {
@@ -132,6 +150,7 @@ export function useDashboard() {
     removeWidget,
     updateLayout,
     updateWidgetConfig,
+    acknowledgeAlert,
     reload: loadDashboard
   };
 }

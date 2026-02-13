@@ -1,4 +1,6 @@
 from fastapi import APIRouter, HTTPException, status
+from pydantic import BaseModel
+from datetime import datetime, timezone
 
 from app.api.v1.deps import CurrentActiveUser, DbSession
 from app.schemas.widget import (
@@ -96,3 +98,94 @@ def remove_widget(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Widget not found"
         )
+
+
+# --- Alert System ---
+
+class AlertRequest(BaseModel):
+    severity: str  # 'critical', 'warning', 'info'
+    message: str
+    auto_dismiss_seconds: int | None = None
+
+
+class AlertResponse(BaseModel):
+    success: bool
+    widget_id: str
+    alert_active: bool
+    severity: str | None = None
+    message: str | None = None
+
+
+@router.post("/widgets/{widget_id}/alert", response_model=AlertResponse)
+def trigger_widget_alert(
+    widget_id: str,
+    alert_data: AlertRequest,
+    current_user: CurrentActiveUser,
+    db: DbSession,
+):
+    """
+    Trigger an alert on a widget.
+    The widget will move to the top of the dashboard until acknowledged.
+    """
+    # Get the widget
+    widget = get_widget_from_dashboard(db, current_user.id, widget_id)
+    if not widget:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Widget not found"
+        )
+
+    # Validate severity
+    valid_severities = ['critical', 'warning', 'info']
+    if alert_data.severity not in valid_severities:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid severity. Must be one of: {', '.join(valid_severities)}"
+        )
+
+    # Update widget with alert info via CRUD
+    from app.crud.dashboard import trigger_widget_alert as crud_trigger_alert
+    updated_widget = crud_trigger_alert(
+        db,
+        current_user.id,
+        widget_id,
+        alert_data.severity,
+        alert_data.message
+    )
+
+    return AlertResponse(
+        success=True,
+        widget_id=widget_id,
+        alert_active=True,
+        severity=alert_data.severity,
+        message=alert_data.message,
+    )
+
+
+@router.post("/widgets/{widget_id}/acknowledge", response_model=AlertResponse)
+def acknowledge_widget_alert(
+    widget_id: str,
+    current_user: CurrentActiveUser,
+    db: DbSession,
+):
+    """
+    Acknowledge and clear an alert on a widget.
+    The widget will return to its original position.
+    """
+    # Get the widget
+    widget = get_widget_from_dashboard(db, current_user.id, widget_id)
+    if not widget:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Widget not found"
+        )
+
+    # Clear alert via CRUD
+    from app.crud.dashboard import acknowledge_widget_alert as crud_acknowledge_alert
+    updated_widget = crud_acknowledge_alert(db, current_user.id, widget_id)
+
+    return AlertResponse(
+        success=True,
+        widget_id=widget_id,
+        alert_active=False,
+        severity=None,
+        message=None,
+    )

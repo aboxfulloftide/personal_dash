@@ -3,6 +3,8 @@
 ## Overview
 Personal Dash is a self-hosted, multi-user personal dashboard application that aggregates various data sources into customizable widgets. Built with a plugin architecture for easy widget additions.
 
+> 📌 **Widget Development:** To add alerts to your widgets, see [WIDGET_ALERTS.md](WIDGET_ALERTS.md) for complete guide and API reference.
+
 ## Tech Stack
 - **Frontend:** React with Vite, Tailwind CSS
 - **Backend:** Python with FastAPI
@@ -13,6 +15,7 @@ Personal Dash is a self-hosted, multi-user personal dashboard application that a
 ## Core Features
 - Multi-user support with JWT authentication
 - Drag-and-drop customizable widget grid
+- **Widget alert system** - Priority notifications with visual indicators (see [WIDGET_ALERTS.md](WIDGET_ALERTS.md))
 - Dark mode support
 - Mobile responsive design
 - Plugin/widget architecture for extensibility
@@ -51,6 +54,8 @@ personal-dash/
 ├── docs/               # Documentation
 │   ├── PROJECT_PLAN.md
 │   ├── TECH_SPECS.md
+│   ├── WIDGET_ALERTS.md  # Widget alert system guide
+│   ├── BACKLOG.md
 │   └── tasks/          # Individual task files
 └── tests/              # Test suites
 ```
@@ -76,11 +81,37 @@ personal-dash/
   - [x] Phase 1: Extended Hourly Forecast (clickable, external links, through midnight)
   - [x] Phase 2: Sunrise/Sunset Times (with visual progression bar)
   - [x] Phase 3: Weather Radar (RainViewer API, animated, expandable)
-- [ ] 15. Additional Widgets (Calendar, News, Fitness, Smart Home)
-- [ ] 16. Email Integration for Package Tracking
-- [ ] 17. Deployment & Documentation
+- [x] 15. Calendar Widget (Google Calendar/ICS support)
+- [x] 16. News Headlines Widget (RSS with keyword filtering)
+- [x] 17. Network Status Widget (Ping monitoring with custom targets)
+- [x] 18. Widget Alert System (Priority notifications - see [WIDGET_ALERTS.md](WIDGET_ALERTS.md))
+- [x] 19. Email Integration for Package Tracking (IMAP auto-scan)
+- [ ] 20. Additional Widgets (Fitness, Smart Home, Picture Frame)
+- [ ] 21. Deployment & Documentation
 
 ## Recent Enhancements
+
+### Widget Alert System (Completed)
+**Overview:** Framework allowing any widget to display priority notifications by moving to top of dashboard until acknowledged.
+
+**Features:**
+- Three severity levels: Critical (🔴), Warning (⚠️), Info (ℹ️)
+- Automatic widget repositioning to top of dashboard
+- Pulsing colored borders based on severity
+- Alert banner with message and acknowledge button
+- Auto-refresh every 30 seconds to detect new alerts
+- Position restoration after acknowledgment
+- Multiple alert support with priority sorting
+
+**Implementation:**
+- Backend API endpoints: `POST /widgets/{id}/alert` and `POST /widgets/{id}/acknowledge`
+- Frontend components: AlertBadge, AlertBanner, AcknowledgeButton
+- Automatic layout management in DashboardGrid
+- Test script for triggering/managing alerts
+
+**Documentation:** See [WIDGET_ALERTS.md](WIDGET_ALERTS.md) for complete guide
+
+---
 
 ### Weather Widget Enhancements (Completed)
 **Phase 1: Extended Hourly Forecast**
@@ -114,47 +145,50 @@ personal-dash/
 
 > **Note:** Ranked from easiest to hardest. See `docs/BACKLOG.md` for detailed specifications.
 
+### ✅ Recently Completed
+
+1. ~~**News Headlines - Priority keywords with highlighting**~~ ✅
+2. ~~**Server Monitor - Track specific processes**~~ ✅
+3. ~~**Server Monitor - Monitor mounted drives**~~ ✅
+4. ~~**Network Speed & Connection Status widget**~~ ✅ (Phase 1: Ping monitoring)
+5. ~~**Stock & Crypto - Database caching**~~ ✅
+6. ~~**Email Integration for Package Tracking**~~ ✅
+7. ~~**Widget Alert System**~~ ✅
+
 ### 🟢 Easy (2-5 hours)
 
-1. ~~**News Headlines - Priority keywords with highlighting**~~ ✅ **COMPLETED**
-   - Articles with priority keywords are highlighted and bumped to top
-   - Shows matched keyword badges with visual indicators
-
-2. **Server Monitor - Track specific processes** (~3-4 hours)
-   - Monitor mysql, plex, game servers, etc.
-
-3. **Server Monitor - Monitor mounted drives** (~3-4 hours)
-   - Track NAS mounts, external drives status
-
-4. **Picture Frame widget** (~4-5 hours)
+1. **Picture Frame widget** (~4-5 hours)
    - Display images from directory (slideshow/random)
+
+2. **Package Tracker - Improve delivery detection** (~3-4 hours)
+   - Change from 24-hour removal to next-midnight removal for better visibility
 
 ### 🟡 Moderate (5-8 hours)
 
-5. **Fitness Stats widget** (~5-6 hours)
+3. **Fitness Stats widget** (~5-6 hours)
    - Body weight tracking with charts
 
-6. **Network Speed & Connection Status widget** (~5-7 hours)
-   - Run speed tests (download/upload/ping)
-   - Monitor connection status
+4. **Network Status - Speed tests** (~4-6 hours)
+   - Add download/upload speed tests (Phase 2 of Network Status widget)
    - Historical speed tracking with graphs
 
-7. **Stock & Crypto - Database caching** (~6-8 hours)
-   - Cache API results, fallback when rate limited
-
-8. **Package Tracker - Auto-remove delivered** (~6-8 hours)
-   - Auto-remove with email confirmation parsing
-
-9. **Weather - Severe weather alerts** (~6-8 hours)
+5. **Weather - Severe weather alerts** (~6-8 hours)
    - Overlay alerts on radar map
+
+6. **Calendar - Smart event display** (~6-8 hours)
+   - Progressive fallback: current event → next event → today's events → week view
+
+7. **Weather - Moon phase tracker** (~5-6 hours)
+   - Display current moon phase with icon and illumination percentage
 
 ### 🔴 Complex (8-20+ hours)
 
-10. **Stock & Crypto - Portfolio value graph** (~8-10 hours)
-    - Daily/weekly portfolio tracking (requires #7 first)
+8. **Stock & Crypto - Portfolio value graph** (~8-10 hours)
+   - Daily/weekly portfolio tracking (requires database caching - ✅ DONE)
 
-11. **Email Integration for Package Tracking** (~12-15 hours)
-    - IMAP + email parsing for multiple carriers
+9. **Smart Home widget** (~10-15 hours)
+   - Home Assistant integration
 
-12. **Deployment & Documentation** (~10-20+ hours)
-    - Deployment scripts, guides, feature docs
+10. **Deployment & Documentation** (~10-20+ hours)
+    - Deployment scripts, systemd services, Nginx config
+    - Production deployment guide

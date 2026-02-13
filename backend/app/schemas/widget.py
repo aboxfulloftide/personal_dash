@@ -73,6 +73,13 @@ class WidgetItem(BaseModel):
     id: str
     type: str
     config: dict = {}
+    # Alert system fields
+    alert_active: Optional[bool] = False
+    alert_severity: Optional[str] = None
+    alert_message: Optional[str] = None
+    alert_triggered_at: Optional[str] = None
+    original_layout_x: Optional[int] = None
+    original_layout_y: Optional[int] = None
 
 
 class DashboardData(BaseModel):

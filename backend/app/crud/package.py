@@ -8,12 +8,21 @@ from app.schemas.package import PackageCreate, PackageUpdate, PackageEventCreate
 
 def create_package(db: Session, user_id: int, package_in: PackageCreate) -> Package:
     """Create a new package."""
+    # Determine source based on whether email metadata is present
+    source = "email" if package_in.email_source else "manual"
+
     package = Package(
         user_id=user_id,
         tracking_number=package_in.tracking_number,
         carrier=package_in.carrier.value,
         description=package_in.description,
-        source="manual",
+        source=source,
+        email_source=package_in.email_source,
+        email_subject=package_in.email_subject,
+        email_sender=package_in.email_sender,
+        email_date=package_in.email_date,
+        email_body_snippet=package_in.email_body_snippet,
+        tracking_url=package_in.tracking_url,
     )
     db.add(package)
     db.commit()
@@ -94,3 +103,33 @@ def get_events(db: Session, package_id: int) -> list[PackageEvent]:
         .order_by(PackageEvent.event_time.desc())
     )
     return list(result.scalars().all())
+
+
+def mark_package_delivered_by_tracking(
+    db: Session,
+    user_id: int,
+    tracking_number: str
+) -> Package | None:
+    """
+    Find a package by tracking number and mark it as delivered.
+    Returns the updated package if found, None otherwise.
+    """
+    # Case-insensitive search for tracking number
+    result = db.execute(
+        select(Package).where(
+            Package.user_id == user_id,
+            Package.tracking_number.ilike(tracking_number),
+            Package.dismissed == False,
+        )
+    )
+    package = result.scalar_one_or_none()
+
+    if package and not package.delivered:
+        package.delivered = True
+        package.delivered_at = datetime.now(timezone.utc).replace(tzinfo=None)
+        package.status = "Delivered"
+        db.commit()
+        db.refresh(package)
+        return package
+
+    return package

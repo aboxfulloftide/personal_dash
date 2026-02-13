@@ -19,6 +19,12 @@ class Package(Base):
     dismissed = Column(Boolean, default=False)
     dismissed_at = Column(DateTime)
     source = Column(String(20), default="manual")
+    email_source = Column(String(255))  # Email address this package came from
+    email_subject = Column(String(500))  # Original email subject
+    email_sender = Column(String(255))  # Original email sender
+    email_date = Column(String(100))  # Original email date string
+    email_body_snippet = Column(Text)  # First 1000 chars of email body for preview
+    tracking_url = Column(Text)  # Actual tracking URL from email (for carriers like Amazon)
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
 

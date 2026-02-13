@@ -25,30 +25,80 @@
 
 ### Enhancements
 
-#### Auto-remove Delivered Packages
+#### Improve Delivery Removal Timing
 **Status:** Not Started
 **Priority:** Medium
+**Estimated Effort:** ~2-3 hours
 **Description:**
-Currently, packages that are delivered remain in the tracker indefinitely. They should be automatically removed after delivery.
+Currently, packages are removed exactly 24 hours after delivery confirmation. This should be changed to remove packages at midnight the following day, giving users the full day to see the delivery notification.
 
-**Proposed Solution:**
-1. When a package is marked as delivered, highlight it visually to notify the user
-2. Automatically remove the delivered package the next day (24 hours later)
-3. Tie delivery confirmation to a separate email notification
-   - Watch for delivery confirmation emails with similar subject lines
-   - Parse delivery email to confirm package was delivered
-   - Update package status accordingly
+**Current Behavior:**
+- Package delivered at 2:00 PM on Monday
+- Removed at 2:00 PM on Tuesday (24 hours later)
+- ❌ User might miss the delivery if they only check in the morning
 
-**Technical Notes:**
-- Need to add a "delivered_at" timestamp field to track when package was delivered
-- Add a background job or scheduled task to clean up old delivered packages
-- Email parser needs to recognize delivery confirmation emails (separate from tracking updates)
-- Consider adding a user setting: "Auto-remove delivered after X days" (default: 1 day)
+**Desired Behavior:**
+- Package delivered at 2:00 PM on Monday
+- Highlighted/marked as delivered immediately (green background, checkmark)
+- Remains visible for the rest of Monday
+- Removed at midnight (12:00 AM) on Wednesday morning
+- ✅ User has all of Tuesday to see it was delivered
+
+**Technical Implementation:**
+- Update cleanup task in `scheduler.py`
+- Instead of: `delivered_at <= now - 24 hours`
+- Use: `delivered_at < start_of_today` (where start_of_today is midnight)
+- This gives users the full next day to see the delivery
+
+**Example Logic:**
+```python
+from datetime import datetime, time
+
+# Current time: Tuesday 10:00 AM
+now = datetime.now()
+start_of_today = datetime.combine(now.date(), time.min)  # Tuesday 12:00 AM
+
+# Remove packages delivered before start of today
+# Packages delivered Monday (any time) → Removed Wednesday 12:00 AM
+# Packages delivered Sunday → Removed Tuesday 12:00 AM
+cutoff_time = start_of_today
+```
+
+**Benefits:**
+- User sees delivery for the entire following day
+- More predictable removal time (always midnight)
+- Better UX - no missed notifications
+- Still automatic cleanup (no manual deletion needed)
 
 **Related Files:**
-- `backend/app/api/v1/endpoints/packages.py`
+- `backend/app/core/scheduler.py` - Update `cleanup_delivered_packages_task()`
+- Current cutoff: `datetime.now() - timedelta(hours=24)`
+- New cutoff: `datetime.combine(datetime.now().date(), time.min)`
+
+---
+
+### Completed
+
+#### Auto-remove Delivered Packages ✓
+**Completed:** 2026-02-12
+**Description:**
+Implemented automatic detection of delivery confirmations and removal of delivered packages.
+
+**Implemented Features:**
+- ✅ Delivery confirmation detection from emails
+- ✅ Email metadata tracking (source, subject, sender, body)
+- ✅ Tracking URL extraction from emails
+- ✅ Spam prefix cleaning
+- ✅ Auto-removal after 24 hours (to be improved - see above)
+- ✅ Green highlighting for delivered packages
+- ✅ Background cleanup task (runs every 6 hours)
+
+**Files Modified:**
+- `backend/app/api/v1/endpoints/email_scanner.py`
+- `backend/app/api/v1/endpoints/email_credentials.py`
+- `backend/app/core/scheduler.py`
+- `backend/app/crud/package.py`
 - `backend/app/models/package.py`
-- Email parsing logic (if exists)
 
 ---
 
@@ -146,10 +196,59 @@ Add ability to monitor specific processes/services and their status.
 
 ## Weather Widget
 
+### Enhancements
+
+#### Moon Phase Tracker with Sunrise Countdown
+**Status:** Not Started
+**Priority:** Low-Medium
+**Estimated Effort:** ~4-6 hours
+**Description:**
+Add a moon phase visualization that shows the current moon phase and tracks time until sunrise, similar to the existing sun progression bar.
+
+**Requirements:**
+- Display current moon phase with appropriate emoji/icon:
+  - 🌑 New Moon
+  - 🌒 Waxing Crescent
+  - 🌓 First Quarter
+  - 🌔 Waxing Gibbous
+  - 🌕 Full Moon
+  - 🌖 Waning Gibbous
+  - 🌗 Last Quarter
+  - 🌘 Waning Crescent
+- Show progression bar from current time to next sunrise
+- Animated moon icon that moves along the bar (like the sun indicator)
+- Display time until sunrise (e.g., "5h 23m until sunrise")
+- Moon illumination percentage (e.g., "87% illuminated")
+- Place below or adjacent to sun progression bar
+
+**Technical Implementation:**
+- Backend: Add moon phase calculation endpoint
+  - Use astronomy library (e.g., `ephem`, `skyfield`, or `astral`)
+  - Calculate moon phase based on date/time
+  - Calculate illumination percentage
+  - Return moon phase name, percentage, and emoji
+- Frontend: Create MoonProgressBar component
+  - Similar structure to sun progression bar
+  - Calculate progress from midnight to sunrise
+  - Animate moon icon position
+  - Display moon phase emoji and stats
+- API: Free astronomical APIs available (e.g., Open-Meteo astronomy endpoint)
+
+**UI/UX Notes:**
+- Keep visual style consistent with sun progression bar
+- Use subtle gradient (dark blue/purple for night)
+- Moon icon should be clearly visible against background
+- Show countdown timer that updates in real-time
+
+**Related Files:**
+- `backend/app/api/v1/endpoints/weather.py`
+- `frontend/src/components/widgets/WeatherWidget.jsx`
+
+---
+
 ### Future Enhancements
 - Severe weather alerts overlay on radar
 - Golden hour times for photographers
-- Moon phase display
 - Air quality index
 - Extended forecast (10-14 days)
 
@@ -349,6 +448,265 @@ Widget to monitor internet connection status and run network speed tests.
 - `backend/app/models/speedtest.py` (new)
 - `frontend/src/components/widgets/NetworkWidget.jsx` (new)
 - `frontend/src/components/widgets/widgetRegistry.js`
+
+---
+
+## Calendar Widget
+
+### Enhancements
+
+#### Smart Event Display with Progressive Fallback
+**Status:** Not Started
+**Priority:** Medium
+**Estimated Effort:** ~3-4 hours
+**Description:**
+Implement intelligent event display logic that adapts based on what events are available, preventing empty calendar displays.
+
+**Requirements:**
+- **Display Priority Logic:**
+  1. **If events exist today:** Show today's events (default behavior)
+  2. **If no events today:** Automatically show this week's events
+  3. **If no events this week:** Automatically show this month's events
+  4. **If no events this month:** Show "No upcoming events" message
+
+- **Visual Indicators:**
+  - Display current view mode: "Today", "This Week", or "This Month"
+  - Show date range being displayed (e.g., "Feb 12 - Feb 18")
+  - Highlight which fallback level is active
+  - Option to manually toggle between views
+
+- **Event Display:**
+  - Today view: Show all events for current day with times
+  - Week view: Group events by day, show 7 days starting from today
+  - Month view: Calendar grid or list view of upcoming events
+
+**Technical Implementation:**
+- Backend: Update calendar endpoint with query parameters
+  - Add `view` parameter: "today", "week", "month"
+  - Add `auto_fallback` parameter (default: true)
+  - Return events + metadata about which view was used
+  - Include event counts per view (e.g., "0 today, 3 this week")
+- Frontend: Implement fallback logic
+  - Fetch event counts for today/week/month
+  - Automatically select appropriate view based on data
+  - Display view selector/indicator
+  - Cache view preference per user
+- Google Calendar API: Query optimization
+  - Single API call to fetch month's events
+  - Frontend filters for today/week views
+  - Reduces API calls and improves performance
+
+**UI/UX Notes:**
+- Smooth transitions between view modes
+- Clear indication of which view is active
+- "No events" state should suggest adding events
+- Option to force specific view (user override)
+- Week view shows Mon-Sun or configurable start day
+
+**Benefits:**
+- Never shows empty calendar
+- User always sees relevant upcoming events
+- Reduces need for manual navigation
+- Better use of widget space
+- More informative at a glance
+
+**Related Files:**
+- `backend/app/api/v1/endpoints/calendar.py` (or create if doesn't exist)
+- `frontend/src/components/widgets/CalendarWidget.jsx` (or create if doesn't exist)
+- Google Calendar API integration
+
+**Dependencies:**
+- Calendar widget must be implemented first (if not already)
+- Google Calendar API integration
+- Authentication with Google OAuth
+
+---
+
+## Dashboard Core / Infrastructure
+
+### Enhancements
+
+#### Widget Alert System - Priority Movement to Top
+**Status:** Not Started
+**Priority:** High
+**Estimated Effort:** ~8-12 hours
+**Description:**
+Build a framework that allows any widget to temporarily move to the top of the dashboard when it has an important message or alert. Once the user views or acknowledges the alert, the widget returns to its original position.
+
+**Phase 1: Core Infrastructure** (This enhancement)
+Build the basic mechanism for widgets to alert and move to top. Per-widget trigger conditions will be added in Phase 2.
+
+**Requirements:**
+
+- **Alert State Management:**
+  - Widgets can enter "alert mode" via API call
+  - Backend tracks which widgets are currently alerting
+  - Store original widget position before moving
+  - Persist alert state across page refreshes
+
+- **Layout Management:**
+  - Automatically move alerted widget to top-left position (0, 0)
+  - Shift other widgets down to make space
+  - Smooth animation during position changes
+  - Support multiple simultaneous alerts (stack at top by priority)
+
+- **Visual Indicators:**
+  - Alerted widgets have distinct styling:
+    - Pulsing border (red/orange/yellow based on severity)
+    - Background highlight
+    - Alert icon/badge in corner
+    - Optional: Subtle shake animation on alert
+  - Non-alerted widgets slightly dimmed when alerts active
+  - Clear "Acknowledge" or "Dismiss" button on alerted widget
+
+- **Acknowledgment Flow:**
+  1. User clicks "Acknowledge" or interacts with alert
+  2. Widget returns to original position
+  3. Layout animates back to normal
+  4. Alert state cleared from backend
+  5. Visual styling returns to normal
+
+- **Alert Severity Levels:**
+  - **Critical** (red): Security alerts, system failures
+  - **Warning** (orange): Important notifications, thresholds exceeded
+  - **Info** (blue): General notifications, updates available
+
+**Technical Implementation:**
+
+**Backend:**
+- Database schema changes:
+  ```sql
+  ALTER TABLE widget_configs ADD COLUMN alert_active BOOLEAN DEFAULT FALSE;
+  ALTER TABLE widget_configs ADD COLUMN alert_severity VARCHAR(20);
+  ALTER TABLE widget_configs ADD COLUMN alert_message TEXT;
+  ALTER TABLE widget_configs ADD COLUMN alert_triggered_at DATETIME;
+  ALTER TABLE widget_configs ADD COLUMN original_layout_x INT;
+  ALTER TABLE widget_configs ADD COLUMN original_layout_y INT;
+  ```
+
+- New endpoint: `POST /api/v1/widgets/{widget_id}/alert`
+  ```json
+  {
+    "severity": "warning",
+    "message": "Server disk usage at 95%",
+    "auto_dismiss_seconds": 300  // Optional
+  }
+  ```
+
+- New endpoint: `POST /api/v1/widgets/{widget_id}/acknowledge`
+  - Clears alert state
+  - Returns original position
+  - Logs acknowledgment
+
+- Middleware to inject alert status into widget data responses
+
+**Frontend:**
+
+- Dashboard state management:
+  - Track alerted widgets
+  - Store original layouts
+  - Manage layout transitions
+
+- React Grid Layout modifications:
+  - Detect when widget enters alert mode
+  - Calculate new layout with alerted widgets at top
+  - Animate position changes using react-grid-layout's `onLayoutChange`
+
+- Alert UI components:
+  - `<AlertBadge>` - Shows severity icon
+  - `<AlertBanner>` - Message bar within widget
+  - `<AcknowledgeButton>` - Dismissal control
+
+- Styling (Tailwind):
+  ```jsx
+  // Critical alert
+  className="ring-4 ring-red-500 ring-opacity-50 animate-pulse"
+
+  // Warning alert
+  className="ring-4 ring-orange-500 ring-opacity-50"
+
+  // Info alert
+  className="ring-4 ring-blue-500 ring-opacity-50"
+  ```
+
+**UI/UX Design:**
+
+```
+┌──────────────────────────────────────────┐
+│ ⚠️ Server Monitor Widget (ALERT)         │ ← Pulsing red border
+│ ┌────────────────────────────────────┐   │
+│ │ 🔴 WARNING: Disk usage at 95%      │   │ ← Alert banner
+│ │ Server: web-01 (/dev/sda1)         │   │
+│ │                                     │   │
+│ │ [View Details] [Acknowledge]       │   │ ← Action buttons
+│ └────────────────────────────────────┘   │
+│ (normal widget content below...)          │
+└──────────────────────────────────────────┘
+```
+
+**Position Management Logic:**
+```javascript
+// When alert triggered:
+1. Save current position: originalLayout[widgetId] = {x, y, w, h}
+2. Move widget to top: {x: 0, y: 0, w: widget.w, h: widget.h}
+3. Shift other widgets down by widget.h rows
+4. Apply alert styling
+
+// When acknowledged:
+1. Restore original position from originalLayout[widgetId]
+2. Shift other widgets back up
+3. Remove alert styling
+4. Clear originalLayout[widgetId]
+```
+
+**Alert Priority System (for multiple alerts):**
+- Critical alerts always at top
+- Stack alerts by severity then timestamp
+- Layout: [Critical1] [Critical2] [Warning1] [Info1] [Normal Widgets...]
+
+**Configuration Options (per widget):**
+- Enable/disable alert capability
+- Auto-dismiss timeout (optional)
+- Custom alert messages/templates
+- Severity level overrides
+
+**Benefits:**
+- ✅ Immediate visibility for critical issues
+- ✅ Works with any widget type
+- ✅ Non-intrusive (user can acknowledge)
+- ✅ Maintains dashboard organization
+- ✅ Clear visual hierarchy
+
+**Future Enhancements (Phase 2):**
+- Per-widget trigger conditions:
+  - Server Monitor: CPU > 90%, Disk > 95%, Process down
+  - Package Tracker: Package out for delivery
+  - Weather: Severe weather alert
+  - Stock: Price drops > X%
+  - News: Priority keyword detected
+- Alert history/log viewer
+- Sound notifications (optional)
+- Browser notifications integration
+- Alert scheduling (quiet hours)
+- Email/SMS integration for critical alerts
+
+**Related Files:**
+- `backend/app/models/widget.py` - Add alert fields
+- `backend/app/api/v1/endpoints/widgets.py` - Alert endpoints
+- `frontend/src/components/Dashboard.jsx` - Layout management
+- `frontend/src/hooks/useAlertSystem.js` - Alert state management
+- `frontend/src/components/AlertBadge.jsx` - Alert UI components
+
+**Dependencies:**
+- None (pure addition to existing widget system)
+
+**Testing Scenarios:**
+1. Single widget alerts and returns to position
+2. Multiple widgets alert simultaneously (stacking)
+3. User acknowledges alerts in different order
+4. Page refresh with active alerts (state persistence)
+5. Alert triggered while user is editing layout
+6. Widget deleted while in alert mode
 
 ---
 
