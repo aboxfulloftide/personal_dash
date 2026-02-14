@@ -30,6 +30,11 @@ class CalendarResponse(BaseModel):
     start_date: str  # ISO date
     end_date: str  # ISO date
     cached: bool = False
+    # Event count metadata for smart view selection
+    events_today_count: int = 0
+    events_week_count: int = 0
+    events_month_count: int = 0
+    auto_selected_view: str | None = None  # Which view was auto-selected
 
 
 # Calendar colors (10 distinct colors for up to 10 calendars)
@@ -52,11 +57,13 @@ _calendar_cache: dict[str, tuple[CalendarResponse, datetime]] = {}
 CACHE_TTL_SECONDS = 600  # 10 minutes
 
 
-def get_cache_key(calendars: str, view: str, month: str | None) -> str:
+def get_cache_key(calendars: str, view: str, month: str | None, auto_fallback: bool) -> str:
     """Generate cache key from parameters."""
     key = f"cal_{calendars}_{view}"
     if month:
         key += f"_{month}"
+    if auto_fallback:
+        key += "_auto"
     return key
 
 
@@ -178,7 +185,8 @@ def filter_events_by_date_range(
                 else:
                     event_date = event_start
                 # Check if event date falls within range
-                if start_date.date() <= event_date <= end_date.date():
+                # end_date is exclusive (start of next day), so use < not <=
+                if start_date.date() <= event_date < end_date.date():
                     filtered.append(event)
             else:
                 # Regular event with time
@@ -187,7 +195,8 @@ def filter_events_by_date_range(
                 if event_start.tzinfo:
                     event_start = event_start.replace(tzinfo=None)
                 # Check if event starts within range (or is ongoing)
-                if start_date <= event_start <= end_date:
+                # end_date is exclusive (start of next day), so use < not <=
+                if start_date <= event_start < end_date:
                     filtered.append(event)
                 elif event.end:
                     # Check if event is ongoing (started before range, ends during range)
@@ -203,12 +212,72 @@ def filter_events_by_date_range(
     return filtered
 
 
+def count_events_in_range(
+    events: list[CalendarEvent],
+    start_date: datetime,
+    end_date: datetime,
+) -> int:
+    """Count events within a date range."""
+    filtered = filter_events_by_date_range(events, start_date, end_date)
+    return len(filtered)
+
+
+def calculate_date_ranges(now: datetime) -> dict:
+    """Calculate date ranges for today, week, and month views."""
+    # Today
+    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    today_end = today_start + timedelta(days=1)
+
+    # This week (Monday to Sunday)
+    week_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    week_start -= timedelta(days=week_start.weekday())  # Monday
+    week_end = week_start + timedelta(days=7)
+
+    # This month
+    month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    if month_start.month == 12:
+        month_end = month_start.replace(year=month_start.year + 1, month=1)
+    else:
+        month_end = month_start.replace(month=month_start.month + 1)
+
+    return {
+        'today': (today_start, today_end),
+        'week': (week_start, week_end),
+        'month': (month_start, month_end),
+    }
+
+
+def select_best_view(
+    events: list[CalendarEvent],
+    date_ranges: dict,
+) -> tuple[str, int, int, int]:
+    """
+    Auto-select best view with events using progressive fallback.
+    Returns: (selected_view, today_count, week_count, month_count)
+    """
+    # Count events in each view
+    today_count = count_events_in_range(events, *date_ranges['today'])
+    week_count = count_events_in_range(events, *date_ranges['week'])
+    month_count = count_events_in_range(events, *date_ranges['month'])
+
+    # Progressive fallback: today -> week -> month -> None
+    if today_count > 0:
+        return ('today', today_count, week_count, month_count)
+    elif week_count > 0:
+        return ('week', today_count, week_count, month_count)
+    elif month_count > 0:
+        return ('month', today_count, week_count, month_count)
+    else:
+        return ('today', today_count, week_count, month_count)  # Default to today if all empty
+
+
 @router.get("", response_model=CalendarResponse)
 async def get_calendar(
     current_user: CurrentActiveUser,
     calendars: str = Query(..., description="Comma-separated ICS URLs"),
     view: str = Query("week", description="View: 'today', 'week', or 'month'"),
     month: Optional[str] = Query(None, description="Month for month view (YYYY-MM)"),
+    auto_fallback: bool = Query(True, description="Auto-select best non-empty view"),
 ):
     """Fetch calendar events from ICS/iCal URLs.
 
@@ -238,7 +307,7 @@ async def get_calendar(
     logger.info("=" * 80)
 
     # Generate cache key
-    cache_key = get_cache_key(calendars, view, month)
+    cache_key = get_cache_key(calendars, view, month, auto_fallback)
 
     # Check cache
     cached = get_cached_calendar(cache_key)
@@ -264,9 +333,20 @@ async def get_calendar(
     if not calendar_list:
         raise HTTPException(status_code=400, detail="At least one calendar URL required")
 
-    # Determine date range based on view
+    # Use local server time for date calculations
+    # Server timezone should match user's timezone for accurate "today" calculation
     now = datetime.now()
-    if view == "today":
+    logger.info(f"DEBUG: Current server time: {now} (timezone: local)")
+    logger.info(f"DEBUG: Current date: {now.date()}")
+
+    # Determine date range based on view and auto_fallback
+    if auto_fallback:
+        # For auto-fallback, always fetch the entire month (largest range)
+        # We'll count events and auto-select the best view
+        date_ranges = calculate_date_ranges(now)
+        start_date, end_date = date_ranges['month']
+        requested_view = view  # Store user's requested view (if any)
+    elif view == "today":
         start_date = now.replace(hour=0, minute=0, second=0, microsecond=0)
         end_date = start_date + timedelta(days=1)
     elif view == "week":
@@ -312,7 +392,23 @@ async def get_calendar(
             continue
         all_events.extend(result)
 
-    # Filter events by date range
+    # Auto-select best view or use requested view
+    auto_selected_view = None
+    events_today_count = 0
+    events_week_count = 0
+    events_month_count = 0
+
+    if auto_fallback:
+        # Calculate date ranges and count events
+        date_ranges = calculate_date_ranges(now)
+        selected_view, events_today_count, events_week_count, events_month_count = select_best_view(all_events, date_ranges)
+
+        # Use the auto-selected view
+        view = selected_view
+        auto_selected_view = selected_view
+        start_date, end_date = date_ranges[selected_view]
+
+    # Filter events by the final selected date range
     filtered_events = filter_events_by_date_range(all_events, start_date, end_date)
 
     # Sort events by start time
@@ -324,6 +420,10 @@ async def get_calendar(
         start_date=start_date.date().isoformat(),
         end_date=end_date.date().isoformat(),
         cached=False,
+        events_today_count=events_today_count,
+        events_week_count=events_week_count,
+        events_month_count=events_month_count,
+        auto_selected_view=auto_selected_view,
     )
 
     # DEBUG: Log response summary

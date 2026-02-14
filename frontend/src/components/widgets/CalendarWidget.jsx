@@ -209,11 +209,11 @@ function EventItem({ event, showDate = false }) {
   );
 }
 
-function ViewTabs({ currentView, onViewChange }) {
+function ViewTabs({ currentView, onViewChange, eventCounts = {} }) {
   const views = [
-    { id: 'today', label: 'Today' },
-    { id: 'week', label: 'Week' },
-    { id: 'month', label: 'Month' },
+    { id: 'today', label: 'Today', count: eventCounts.today || 0 },
+    { id: 'week', label: 'Week', count: eventCounts.week || 0 },
+    { id: 'month', label: 'Month', count: eventCounts.month || 0 },
   ];
 
   return (
@@ -222,13 +222,22 @@ function ViewTabs({ currentView, onViewChange }) {
         <button
           key={view.id}
           onClick={() => onViewChange(view.id)}
-          className={`flex-1 px-2 py-1 text-xs font-medium rounded transition-colors ${
+          className={`flex-1 px-2 py-1.5 text-xs font-medium rounded transition-colors ${
             currentView === view.id
               ? 'bg-white dark:bg-gray-600 text-gray-900 dark:text-gray-100 shadow-sm'
               : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100'
           }`}
         >
-          {view.label}
+          <div className="flex flex-col items-center">
+            <span>{view.label}</span>
+            <span className={`text-[10px] ${
+              currentView === view.id
+                ? 'text-gray-500 dark:text-gray-400'
+                : 'text-gray-400 dark:text-gray-500'
+            }`}>
+              {view.count}
+            </span>
+          </div>
         </button>
       ))}
     </div>
@@ -338,6 +347,7 @@ function EventsList({ events, view }) {
 export default function CalendarWidget({ config }) {
   const defaultView = config.default_view || 'week';
   const [view, setView] = useState(defaultView);
+  const [userOverrodeView, setUserOverrodeView] = useState(false);
 
   // For month view, track selected month
   const getCurrentMonth = () => {
@@ -360,10 +370,18 @@ export default function CalendarWidget({ config }) {
       calendars: config.calendars || '',
       view: view,
       month: view === 'month' ? selectedMonth : undefined,
+      auto_fallback: !userOverrodeView,
     },
     refreshInterval: config.refresh_interval || 600,
     enabled: !!config.calendars,
   });
+
+  // Sync view with backend's auto-selected view (only when not manually overridden)
+  useEffect(() => {
+    if (data?.auto_selected_view && !userOverrodeView) {
+      setView(data.auto_selected_view);
+    }
+  }, [data?.auto_selected_view, userOverrodeView]);
 
   if (!config.calendars) {
     return <CalendarInstructions />;
@@ -399,19 +417,54 @@ export default function CalendarWidget({ config }) {
     return null;
   }
 
+  // Handle view change - marks as manual override
+  const handleViewChange = (newView) => {
+    setView(newView);
+    setUserOverrodeView(true);
+  };
+
+  // Handle month change - reset auto-fallback for new month
+  const handleMonthChange = (newMonth) => {
+    setSelectedMonth(newMonth);
+    setUserOverrodeView(false);
+  };
+
+  // Get event counts for tabs
+  const eventCounts = {
+    today: data.events_today_count || 0,
+    week: data.events_week_count || 0,
+    month: data.events_month_count || 0,
+  };
+
   return (
     <div className="h-full flex flex-col overflow-hidden">
       {/* Header with view tabs */}
       <div className="flex-shrink-0 mb-3">
-        <ViewTabs currentView={view} onViewChange={setView} />
+        <ViewTabs
+          currentView={view}
+          onViewChange={handleViewChange}
+          eventCounts={eventCounts}
+        />
       </div>
+
+      {/* Smart view indicator */}
+      {data.auto_selected_view && !userOverrodeView && (
+        <div className="flex-shrink-0 mb-2 px-2 py-1.5 bg-blue-50 dark:bg-blue-900/20 rounded border border-blue-200 dark:border-blue-800">
+          <p className="text-xs text-blue-800 dark:text-blue-300">
+            <strong>Smart View:</strong> Showing{' '}
+            {data.auto_selected_view === 'today' ? 'Today' :
+             data.auto_selected_view === 'week' ? 'This Week' : 'This Month'}
+            {' '}({eventCounts[data.auto_selected_view]} event{eventCounts[data.auto_selected_view] !== 1 ? 's' : ''})
+          </p>
+        </div>
+      )}
 
       {/* Month selector for month view */}
       {view === 'month' && (
         <div className="flex-shrink-0">
           <MonthSelector
             currentMonth={selectedMonth}
-            onMonthChange={setSelectedMonth}
+            onMonthChange={handleMonthChange}
           />
         </div>
       )}
