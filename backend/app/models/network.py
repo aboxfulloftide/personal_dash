@@ -35,3 +35,25 @@ class NetworkPingResult(Base):
     __table_args__ = (
         Index('idx_ping_user_timestamp', 'user_id', 'timestamp'),
     )
+
+
+class SpeedTestResult(Base):
+    __tablename__ = "speed_test_results"
+
+    id = Column(BigInteger, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    download_mbps = Column(Float, nullable=True)
+    upload_mbps = Column(Float, nullable=True)
+    ping_ms = Column(Float, nullable=True)
+    server_id = Column(String(50), nullable=True)
+    server_name = Column(String(255), nullable=True)
+    server_location = Column(String(255), nullable=True)
+    server_sponsor = Column(String(255), nullable=True)
+    test_duration_seconds = Column(Float, nullable=True)
+    is_successful = Column(Boolean, nullable=False, default=False)
+    error_message = Column(String(500), nullable=True)
+    timestamp = Column(DateTime, server_default=func.now(), nullable=False, index=True)
+
+    __table_args__ = (
+        Index('idx_speedtest_user_timestamp', 'user_id', 'timestamp'),
+    )

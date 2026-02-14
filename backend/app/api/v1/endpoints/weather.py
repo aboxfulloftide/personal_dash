@@ -1,4 +1,5 @@
 import httpx
+import math
 from datetime import datetime, timedelta
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
@@ -50,6 +51,13 @@ class SunTimes(BaseModel):
     sunset_timestamp: int   # Unix timestamp for progress bar calculation
 
 
+class MoonPhase(BaseModel):
+    phase_name: str       # "Waxing Gibbous", "Full Moon", etc.
+    phase_emoji: str      # "🌔", "🌕", etc.
+    illumination: int     # 0-100 percentage
+    phase_value: float    # 0.0-1.0 (for debugging/future use)
+
+
 class RadarFrame(BaseModel):
     time: int  # Unix timestamp
     path: str  # Tile URL path
@@ -60,6 +68,28 @@ class RadarResponse(BaseModel):
     host: str  # Tile server host
 
 
+class WeatherAlert(BaseModel):
+    """Schema for severe weather alert."""
+    id: str  # NWS alert ID
+    event: str  # "Tornado Warning", "Severe Thunderstorm Watch", etc.
+    severity: str  # "Extreme", "Severe", "Moderate", "Minor"
+    urgency: str  # "Immediate", "Expected", "Future"
+    headline: str  # Brief summary
+    description: str  # Full alert text
+    instruction: str | None  # Safety instructions
+    affected_areas: str  # Human-readable area description
+    onset: str  # ISO datetime
+    expires: str  # ISO datetime
+    geometry: dict | None  # GeoJSON geometry (Polygon/MultiPolygon)
+
+
+class WeatherAlertsResponse(BaseModel):
+    """Schema for weather alerts response."""
+    alerts: list[WeatherAlert]
+    alert_count: int
+    highest_severity: str | None  # For quick checks
+
+
 class WeatherResponse(BaseModel):
     location: str
     current: CurrentWeather
@@ -67,6 +97,7 @@ class WeatherResponse(BaseModel):
     today_hourly: list[HourlyForecast] = []  # Remaining hours for today
     external_forecast_url: str  # URL to external detailed forecast
     sun_times: SunTimes | None = None  # Sunrise/sunset times
+    moon_phase: MoonPhase | None = None  # Current moon phase
 
 
 # Weather code mappings for Open-Meteo
@@ -185,6 +216,69 @@ async def geocode_location(location: str) -> tuple[float, float, str]:
         display_name = name
 
     return lat, lon, display_name
+
+
+def calculate_moon_phase(dt: datetime | None = None) -> MoonPhase:
+    """Calculate current moon phase based on date.
+
+    Uses the lunar synodic month (29.53 days) to calculate phase.
+    Reference: January 6, 2000 was a new moon.
+
+    Returns:
+        MoonPhase with name, emoji, illumination percentage, and phase value (0.0-1.0)
+    """
+    if dt is None:
+        dt = datetime.now()
+
+    # Known new moon: January 6, 2000, 18:14 UTC
+    known_new_moon = datetime(2000, 1, 6, 18, 14)
+
+    # Lunar synodic month in days
+    lunar_month = 29.530588853
+
+    # Calculate days since known new moon
+    days_since = (dt - known_new_moon).total_seconds() / 86400
+
+    # Calculate phase (0.0 = new moon, 0.5 = full moon, 1.0 = new moon)
+    phase = (days_since % lunar_month) / lunar_month
+
+    # Calculate illumination percentage
+    # Illumination peaks at 100% during full moon (phase = 0.5)
+    illumination = int(100 * (1 - abs(2 * (phase - 0.5))))
+
+    # Determine phase name and emoji
+    # Phase ranges based on typical lunar phase divisions
+    if phase < 0.03 or phase >= 0.97:
+        phase_name = "New Moon"
+        phase_emoji = "🌑"
+    elif phase < 0.22:
+        phase_name = "Waxing Crescent"
+        phase_emoji = "🌒"
+    elif phase < 0.28:
+        phase_name = "First Quarter"
+        phase_emoji = "🌓"
+    elif phase < 0.47:
+        phase_name = "Waxing Gibbous"
+        phase_emoji = "🌔"
+    elif phase < 0.53:
+        phase_name = "Full Moon"
+        phase_emoji = "🌕"
+    elif phase < 0.72:
+        phase_name = "Waning Gibbous"
+        phase_emoji = "🌖"
+    elif phase < 0.78:
+        phase_name = "Last Quarter"
+        phase_emoji = "🌗"
+    else:  # 0.78 to 0.97
+        phase_name = "Waning Crescent"
+        phase_emoji = "🌘"
+
+    return MoonPhase(
+        phase_name=phase_name,
+        phase_emoji=phase_emoji,
+        illumination=illumination,
+        phase_value=round(phase, 3),
+    )
 
 
 def get_external_forecast_url(lat: float, lon: float, provider: str = "windy") -> str:
@@ -324,8 +418,8 @@ async def fetch_openmeteo(lat: float, lon: float, units: str) -> dict:
             sunset_dt = datetime.strptime(sunset_times[0], "%Y-%m-%dT%H:%M")
 
             sun_times = SunTimes(
-                sunrise=sunrise_dt.strftime("%-I:%M %p"),  # "6:45 AM"
-                sunset=sunset_dt.strftime("%-I:%M %p"),    # "5:32 PM"
+                sunrise=sunrise_dt.strftime("%I:%M %p").lstrip("0"),  # "6:45 AM"
+                sunset=sunset_dt.strftime("%I:%M %p").lstrip("0"),    # "5:32 PM"
                 sunrise_timestamp=int(sunrise_dt.timestamp()),
                 sunset_timestamp=int(sunset_dt.timestamp()),
             )
@@ -415,6 +509,66 @@ async def fetch_openweathermap(lat: float, lon: float, units: str, api_key: str)
     return {"current": current, "forecast": forecast}
 
 
+async def fetch_nws_alerts(lat: float, lon: float) -> WeatherAlertsResponse:
+    """Fetch active weather alerts from National Weather Service.
+
+    US locations only. Returns empty list for non-US locations or API failures.
+    """
+    url = f"https://api.weather.gov/alerts/active?point={lat},{lon}"
+
+    try:
+        async with httpx.AsyncClient() as client:
+            # NWS requires User-Agent header
+            headers = {"User-Agent": "(PersonalDash, dashboard@example.com)"}
+            resp = await client.get(url, timeout=10.0, headers=headers)
+
+            if resp.status_code != 200:
+                logger.warning(f"NWS alerts API returned {resp.status_code} for {lat},{lon}")
+                return WeatherAlertsResponse(alerts=[], alert_count=0, highest_severity=None)
+
+            data = resp.json()
+    except Exception as e:
+        logger.error(f"Failed to fetch NWS alerts: {e}")
+        return WeatherAlertsResponse(alerts=[], alert_count=0, highest_severity=None)
+
+    alerts = []
+    severities = []
+
+    for feature in data.get("features", []):
+        props = feature.get("properties", {})
+        geometry = feature.get("geometry")
+
+        alert = WeatherAlert(
+            id=props.get("id", ""),
+            event=props.get("event", "Unknown"),
+            severity=props.get("severity", "Unknown"),
+            urgency=props.get("urgency", "Unknown"),
+            headline=props.get("headline", ""),
+            description=props.get("description", ""),
+            instruction=props.get("instruction"),
+            affected_areas=props.get("areaDesc", ""),
+            onset=props.get("onset", ""),
+            expires=props.get("expires", ""),
+            geometry=geometry,  # Pass through GeoJSON
+        )
+        alerts.append(alert)
+        severities.append(props.get("severity", "Unknown"))
+
+    # Determine highest severity
+    severity_order = ["Extreme", "Severe", "Moderate", "Minor"]
+    highest = None
+    for sev in severity_order:
+        if sev in severities:
+            highest = sev
+            break
+
+    return WeatherAlertsResponse(
+        alerts=alerts,
+        alert_count=len(alerts),
+        highest_severity=highest,
+    )
+
+
 @router.get("/locations/search", response_model=list[LocationResult])
 async def search_locations_endpoint(
     current_user: CurrentActiveUser,
@@ -464,6 +618,27 @@ async def get_weather_radar(
     return RadarResponse(frames=frames, host=host)
 
 
+@router.get("/alerts", response_model=WeatherAlertsResponse)
+async def get_weather_alerts(
+    current_user: CurrentActiveUser,
+    location: str = Query(..., description="City name or lat,lon coordinates"),
+):
+    """
+    Get active severe weather alerts for a location from National Weather Service.
+
+    US locations only. Returns empty list for non-US locations.
+    """
+    try:
+        lat, lon, _ = await geocode_location(location)
+    except HTTPException:
+        raise
+    except Exception:
+        raise HTTPException(status_code=502, detail="Failed to geocode location")
+
+    alerts = await fetch_nws_alerts(lat, lon)
+    return alerts
+
+
 @router.get("", response_model=WeatherResponse)
 async def get_weather(
     current_user: CurrentActiveUser,
@@ -491,6 +666,9 @@ async def get_weather(
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"Failed to fetch weather: {str(e)}")
 
+    # Calculate moon phase
+    moon_phase = calculate_moon_phase()
+
     return WeatherResponse(
         location=display_name,
         current=result["current"],
@@ -498,4 +676,5 @@ async def get_weather(
         today_hourly=result.get("today_hourly", []),
         external_forecast_url=get_external_forecast_url(lat, lon, external_forecast_provider),
         sun_times=result.get("sun_times"),
+        moon_phase=moon_phase,
     )

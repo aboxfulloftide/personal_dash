@@ -1,6 +1,6 @@
 from datetime import datetime, timezone, timedelta
 from sqlalchemy.orm import Session
-from sqlalchemy import select, desc
+from sqlalchemy import select, desc, func
 
 from app.models.network import NetworkStatus, NetworkPingResult
 
@@ -109,3 +109,129 @@ def get_latest_ping_results_per_target(
             results.append(ping_result)
 
     return results
+
+
+def get_ping_history(
+    db: Session,
+    user_id: int,
+    hours: int = 24,
+    target_host: str | None = None,
+) -> dict[str, list[NetworkPingResult]]:
+    """
+    Get historical ping results grouped by target host.
+
+    Returns a dict mapping target_host -> list of ping results (oldest first).
+    """
+    cutoff = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(hours=hours)
+
+    # Build query
+    query = select(NetworkPingResult).where(
+        NetworkPingResult.user_id == user_id,
+        NetworkPingResult.timestamp >= cutoff,
+    )
+
+    # Filter by specific target if provided
+    if target_host:
+        query = query.where(NetworkPingResult.target_host == target_host)
+
+    # Order chronologically for graphing
+    query = query.order_by(NetworkPingResult.timestamp.asc())
+
+    result = db.execute(query)
+    all_results = list(result.scalars().all())
+
+    # Group by target host
+    grouped: dict[str, list[NetworkPingResult]] = {}
+    for ping_result in all_results:
+        if ping_result.target_host not in grouped:
+            grouped[ping_result.target_host] = []
+        grouped[ping_result.target_host].append(ping_result)
+
+    return grouped
+
+
+def calculate_uptime_stats(
+    db: Session, user_id: int
+) -> dict[str, dict[str, float | int]]:
+    """
+    Calculate uptime statistics for each target over 24h, 7d, and 30d windows.
+
+    Returns a dict mapping target_host -> stats dict with uptime percentages and check counts.
+    """
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+
+    # Get distinct target hosts
+    targets_result = db.execute(
+        select(NetworkPingResult.target_host, NetworkPingResult.target_name)
+        .where(NetworkPingResult.user_id == user_id)
+        .distinct()
+    )
+    targets = {row[0]: row[1] for row in targets_result.all()}
+
+    stats = {}
+
+    for target_host, target_name in targets.items():
+        target_stats = {"target_name": target_name}
+
+        # Calculate for each time window
+        for days, label in [(1, "24h"), (7, "7d"), (30, "30d")]:
+            cutoff = now - timedelta(days=days)
+
+            # Count total checks and successful checks
+            total_result = db.execute(
+                select(func.count(NetworkPingResult.id))
+                .where(
+                    NetworkPingResult.user_id == user_id,
+                    NetworkPingResult.target_host == target_host,
+                    NetworkPingResult.timestamp >= cutoff,
+                )
+            )
+            total_checks = total_result.scalar() or 0
+
+            successful_result = db.execute(
+                select(func.count(NetworkPingResult.id))
+                .where(
+                    NetworkPingResult.user_id == user_id,
+                    NetworkPingResult.target_host == target_host,
+                    NetworkPingResult.timestamp >= cutoff,
+                    NetworkPingResult.is_reachable == True,
+                )
+            )
+            successful_checks = successful_result.scalar() or 0
+
+            # Calculate uptime percentage
+            uptime_pct = (successful_checks / total_checks * 100) if total_checks > 0 else 0.0
+
+            target_stats[f"uptime_{label}"] = uptime_pct
+            target_stats[f"total_checks_{label}"] = total_checks
+            target_stats[f"successful_checks_{label}"] = successful_checks
+
+        stats[target_host] = target_stats
+
+    return stats
+
+
+def cleanup_old_ping_results(db: Session, days: int = 30) -> int:
+    """
+    Delete ping results older than the specified number of days.
+
+    Returns the number of records deleted.
+    """
+    cutoff = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=days)
+
+    # Count records to delete
+    count_result = db.execute(
+        select(func.count(NetworkPingResult.id))
+        .where(NetworkPingResult.timestamp < cutoff)
+    )
+    count = count_result.scalar() or 0
+
+    # Delete old records
+    if count > 0:
+        db.execute(
+            NetworkPingResult.__table__.delete()
+            .where(NetworkPingResult.timestamp < cutoff)
+        )
+        db.commit()
+
+    return count

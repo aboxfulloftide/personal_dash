@@ -30,3 +30,4 @@ icalendar==6.0.1
 imapclient==3.0.1
 apscheduler==3.10.4
 recurring-ical-events==3.8.0
+speedtest-cli==2.1.3

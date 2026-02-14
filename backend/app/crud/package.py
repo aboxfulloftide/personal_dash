@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime
 from sqlalchemy.orm import Session
 from sqlalchemy import select
 
@@ -60,9 +60,9 @@ def update_package(db: Session, package: Package, update_data: PackageUpdate) ->
     for field, value in update_dict.items():
         setattr(package, field, value)
 
-    # If marking as delivered, set delivered_at timestamp
+    # If marking as delivered, set delivered_at timestamp (use local time for midnight calculations)
     if update_data.delivered is True and package.delivered_at is None:
-        package.delivered_at = datetime.now(timezone.utc).replace(tzinfo=None)
+        package.delivered_at = datetime.now()  # Local time, not UTC
 
     db.commit()
     db.refresh(package)
@@ -76,7 +76,7 @@ def delete_package(db: Session, package_id: int) -> bool:
         return False
     # Soft delete: mark as dismissed instead of hard deleting
     package.dismissed = True
-    package.dismissed_at = datetime.now(timezone.utc).replace(tzinfo=None)
+    package.dismissed_at = datetime.now()  # Local time, not UTC
     db.commit()
     return True
 
@@ -87,7 +87,7 @@ def add_event(db: Session, package_id: int, event_in: PackageEventCreate) -> Pac
         package_id=package_id,
         status=event_in.status,
         location=event_in.location,
-        event_time=event_in.event_time or datetime.now(timezone.utc).replace(tzinfo=None),
+        event_time=event_in.event_time or datetime.now(),  # Local time, not UTC
     )
     db.add(event)
     db.commit()
@@ -141,7 +141,7 @@ def mark_package_delivered_by_tracking(
 
             if not package.delivered:
                 package.delivered = True
-                package.delivered_at = datetime.now(timezone.utc).replace(tzinfo=None)
+                package.delivered_at = datetime.now()  # Local time, not UTC
                 package.status = "Delivered"
                 delivered_count += 1
 

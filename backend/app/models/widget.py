@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Boolean, DateTime, ForeignKey, JSON
+from sqlalchemy import Column, Integer, String, Boolean, DateTime, ForeignKey, JSON, Text
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from app.core.database import Base
@@ -15,6 +15,14 @@ class WidgetConfig(Base):
     enabled = Column(Boolean, default=True)
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+    # Alert system fields
+    alert_active = Column(Boolean, default=False)
+    alert_severity = Column(String(20))  # 'critical', 'warning', 'info'
+    alert_message = Column(Text)
+    alert_triggered_at = Column(DateTime)
+    original_layout_x = Column(Integer)
+    original_layout_y = Column(Integer)
 
     user = relationship("User", back_populates="widget_configs")
 

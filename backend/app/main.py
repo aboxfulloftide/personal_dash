@@ -10,6 +10,12 @@ from app.core.scheduler import start_scheduler, stop_scheduler
 async def lifespan(app: FastAPI):
     # Startup
     start_scheduler()
+
+    # Run cleanup task immediately on startup to catch any packages from overnight
+    from app.core.scheduler import cleanup_delivered_packages_task
+    import asyncio
+    asyncio.create_task(cleanup_delivered_packages_task())
+
     yield
     # Shutdown
     stop_scheduler()

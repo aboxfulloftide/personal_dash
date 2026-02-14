@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import api from '../../services/api';
+import PortfolioGraph from './PortfolioGraph';
 
 // Minimum refresh intervals per provider (in seconds) to avoid rate limits
 // With database caching, we can use 20-minute intervals to reduce API calls
@@ -35,9 +36,10 @@ function formatTimeAgo(date) {
   return `${hours}h ago`;
 }
 
-function CryptoRow({ id, symbol, amount, price, change24h, currency, onRemove }) {
+function CryptoRow({ id, symbol, amount, price, change24h, currency, type, onRemove }) {
   const total = price !== null ? price * amount : null;
   const isPositive = change24h !== null && change24h >= 0;
+  const isPortfolio = type === 'portfolio';
 
   return (
     <div className="flex items-center justify-between py-1.5 border-b border-gray-100 dark:border-gray-700 last:border-0">
@@ -49,6 +51,12 @@ function CryptoRow({ id, symbol, amount, price, change24h, currency, onRemove })
         >
           ×
         </button>
+        <span
+          className="text-xs"
+          title={isPortfolio ? 'Portfolio' : 'Watchlist'}
+        >
+          {isPortfolio ? '💼' : '👁️'}
+        </span>
         <span className="font-medium text-gray-800 dark:text-gray-200 text-sm">
           {symbol}
         </span>
@@ -60,12 +68,20 @@ function CryptoRow({ id, symbol, amount, price, change24h, currency, onRemove })
         <span className={`w-14 text-right ${isPositive ? 'text-green-600' : 'text-red-500'}`}>
           {formatPercent(change24h)}
         </span>
-        <span className="text-gray-500 dark:text-gray-400 w-12 text-right">
-          {amount}×
-        </span>
-        <span className="font-medium text-gray-800 dark:text-gray-200 w-20 text-right">
-          {formatCurrency(total, currency)}
-        </span>
+        {isPortfolio ? (
+          <>
+            <span className="text-gray-500 dark:text-gray-400 w-12 text-right">
+              {amount}×
+            </span>
+            <span className="font-medium text-gray-800 dark:text-gray-200 w-20 text-right">
+              {formatCurrency(total, currency)}
+            </span>
+          </>
+        ) : (
+          <span className="text-gray-400 dark:text-gray-500 text-xs italic w-32 text-right">
+            watching
+          </span>
+        )}
       </div>
     </div>
   );
@@ -74,6 +90,7 @@ function CryptoRow({ id, symbol, amount, price, change24h, currency, onRemove })
 function AddHoldingModal({ isOpen, onClose, onAdd }) {
   const [coin, setCoin] = useState('bitcoin');
   const [amount, setAmount] = useState('');
+  const [type, setType] = useState('portfolio');
 
   const commonCoins = [
     { value: 'bitcoin', label: 'Bitcoin (BTC)' },
@@ -90,10 +107,17 @@ function AddHoldingModal({ isOpen, onClose, onAdd }) {
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    if (!coin || !amount) return;
-    onAdd({ coin, amount: parseFloat(amount) });
+    if (!coin) return;
+    if (type === 'portfolio' && !amount) return;
+
+    onAdd({
+      coin,
+      amount: type === 'portfolio' ? parseFloat(amount) : 0,
+      type: type
+    });
     setCoin('bitcoin');
     setAmount('');
+    setType('portfolio');
     onClose();
   };
 
@@ -103,6 +127,33 @@ function AddHoldingModal({ isOpen, onClose, onAdd }) {
       <div className="relative bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-xs w-full mx-4 p-4">
         <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-3">Add Crypto</h3>
         <form onSubmit={handleSubmit} className="space-y-3">
+          <div>
+            <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Type</label>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setType('portfolio')}
+                className={`flex-1 px-3 py-2 rounded text-sm transition-colors ${
+                  type === 'portfolio'
+                    ? 'bg-blue-600 text-white'
+                    : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300'
+                }`}
+              >
+                💼 Portfolio
+              </button>
+              <button
+                type="button"
+                onClick={() => setType('watchlist')}
+                className={`flex-1 px-3 py-2 rounded text-sm transition-colors ${
+                  type === 'watchlist'
+                    ? 'bg-blue-600 text-white'
+                    : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300'
+                }`}
+              >
+                👁️ Watchlist
+              </button>
+            </div>
+          </div>
           <div>
             <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Coin</label>
             <select
@@ -115,19 +166,21 @@ function AddHoldingModal({ isOpen, onClose, onAdd }) {
               ))}
             </select>
           </div>
-          <div>
-            <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Amount</label>
-            <input
-              type="number"
-              value={amount}
-              onChange={(e) => setAmount(e.target.value)}
-              placeholder="0.4931"
-              step="any"
-              min="0"
-              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm"
-              required
-            />
-          </div>
+          {type === 'portfolio' && (
+            <div>
+              <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Amount</label>
+              <input
+                type="number"
+                value={amount}
+                onChange={(e) => setAmount(e.target.value)}
+                placeholder="0.4931"
+                step="any"
+                min="0"
+                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm"
+                required
+              />
+            </div>
+          )}
           <div className="flex justify-end gap-2 pt-2">
             <button type="button" onClick={onClose} className="px-3 py-1.5 text-gray-600 dark:text-gray-400 text-sm">
               Cancel
@@ -148,9 +201,25 @@ export default function CryptoWidget({ config, onConfigChange }) {
   const [error, setError] = useState(null);
   const [showAddModal, setShowAddModal] = useState(false);
   const [lastUpdated, setLastUpdated] = useState(null);
+  const [showGraph, setShowGraph] = useState(false);
+  const [graphData, setGraphData] = useState(null);
+  const [graphLoading, setGraphLoading] = useState(false);
+  const [graphError, setGraphError] = useState(null);
 
   const holdings = config.holdings || [];
   const currency = config.currency || 'usd';
+
+  // One-time migration: Add type field to existing holdings
+  useEffect(() => {
+    const needsMigration = holdings.some(h => !h.type);
+    if (needsMigration) {
+      const migratedHoldings = holdings.map(h => ({
+        ...h,
+        type: h.type || 'portfolio'
+      }));
+      onConfigChange?.({ ...config, holdings: migratedHoldings });
+    }
+  }, []); // Run once on mount
 
   const fetchPrices = async () => {
     if (holdings.length === 0) return;
@@ -207,7 +276,38 @@ export default function CryptoWidget({ config, onConfigChange }) {
     onConfigChange?.({ ...config, holdings: newHoldings });
   };
 
-  const totalValue = holdings.reduce((sum, h) => {
+  const fetchPortfolioHistory = async () => {
+    const portfolioHoldings = holdings.filter(h => (h.type || 'portfolio') === 'portfolio');
+    if (portfolioHoldings.length === 0) return;
+
+    setGraphLoading(true);
+    setGraphError(null);
+
+    try {
+      const params = {
+        holdings: JSON.stringify(portfolioHoldings),
+        days: 90,
+      };
+      const resp = await api.get('/finance/crypto/portfolio-history', { params });
+      setGraphData(resp.data);
+    } catch (err) {
+      setGraphError(err.response?.data?.detail || 'Failed to load portfolio history');
+    } finally {
+      setGraphLoading(false);
+    }
+  };
+
+  // Lazy load graph data when expanded
+  useEffect(() => {
+    if (showGraph && !graphData) {
+      fetchPortfolioHistory();
+    }
+  }, [showGraph]);
+
+  const portfolioHoldings = holdings.filter(h => (h.type || 'portfolio') === 'portfolio');
+  const watchlistHoldings = holdings.filter(h => h.type === 'watchlist');
+
+  const totalValue = portfolioHoldings.reduce((sum, h) => {
     const priceData = prices[h.coin];
     if (priceData?.price) {
       return sum + priceData.price * h.amount;
@@ -242,7 +342,13 @@ export default function CryptoWidget({ config, onConfigChange }) {
       <div className="flex items-center justify-between mb-2">
         <div className="flex flex-col">
           <span className="text-xs text-gray-500 dark:text-gray-400">
-            {loading ? 'Updating...' : error ? 'Error' : `${holdings.length} coins`}
+            {loading ? 'Updating...' : error ? 'Error' : (
+              <>
+                {portfolioHoldings.length > 0 && `💼 ${portfolioHoldings.length}`}
+                {portfolioHoldings.length > 0 && watchlistHoldings.length > 0 && ' • '}
+                {watchlistHoldings.length > 0 && `👁️ ${watchlistHoldings.length}`}
+              </>
+            )}
           </span>
           {lastUpdated && !loading && (
             <span className="text-xs text-gray-400 dark:text-gray-500">
@@ -274,20 +380,81 @@ export default function CryptoWidget({ config, onConfigChange }) {
               price={priceData.price}
               change24h={priceData.change_24h}
               currency={currency}
+              type={holding.type || 'portfolio'}
               onRemove={() => handleRemoveHolding(index)}
             />
           );
         })}
       </div>
 
-      <div className="pt-2 mt-2 border-t border-gray-200 dark:border-gray-700">
-        <div className="flex items-center justify-between">
-          <span className="text-xs text-gray-500 dark:text-gray-400">Total Value</span>
-          <span className="font-semibold text-gray-800 dark:text-gray-200">
-            {formatCurrency(totalValue, currency)}
-          </span>
+      {/* Portfolio Graph Section */}
+      {portfolioHoldings.length > 0 && (
+        <div className="border-t border-gray-200 dark:border-gray-700">
+          {!showGraph ? (
+            <button
+              onClick={() => setShowGraph(true)}
+              className="w-full px-2 py-2 text-xs text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors flex items-center justify-between"
+            >
+              <span>📈 Show Portfolio Graph</span>
+              <span>▼</span>
+            </button>
+          ) : (
+            <div className="px-2 py-2">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs font-medium text-gray-700 dark:text-gray-300">Portfolio History (90 days)</span>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={fetchPortfolioHistory}
+                    className="text-xs text-blue-600 hover:text-blue-700 dark:text-blue-400"
+                    disabled={graphLoading}
+                  >
+                    {graphLoading ? '...' : '↻ Refresh'}
+                  </button>
+                  <button
+                    onClick={() => setShowGraph(false)}
+                    className="text-xs text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
+                  >
+                    ▲ Hide
+                  </button>
+                </div>
+              </div>
+
+              {graphLoading && !graphData && (
+                <div className="flex items-center justify-center h-48 bg-gray-100 dark:bg-gray-700 rounded">
+                  <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+                </div>
+              )}
+
+              {graphError && (
+                <div className="flex flex-col items-center justify-center h-48 bg-gray-100 dark:bg-gray-700 rounded text-xs text-red-500">
+                  <p className="mb-2">{graphError}</p>
+                  <button
+                    onClick={fetchPortfolioHistory}
+                    className="px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700"
+                  >
+                    Retry
+                  </button>
+                </div>
+              )}
+
+              {!graphLoading && !graphError && graphData && (
+                <PortfolioGraph data={graphData} currency={currency.toUpperCase()} />
+              )}
+            </div>
+          )}
         </div>
-      </div>
+      )}
+
+      {portfolioHoldings.length > 0 && (
+        <div className="pt-2 mt-2 border-t border-gray-200 dark:border-gray-700">
+          <div className="flex items-center justify-between">
+            <span className="text-xs text-gray-500 dark:text-gray-400">💼 Portfolio Value</span>
+            <span className="font-semibold text-gray-800 dark:text-gray-200">
+              {formatCurrency(totalValue, currency)}
+            </span>
+          </div>
+        </div>
+      )}
 
       <AddHoldingModal
         isOpen={showAddModal}

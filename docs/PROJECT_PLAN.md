@@ -81,6 +81,8 @@ personal-dash/
   - [x] Phase 1: Extended Hourly Forecast (clickable, external links, through midnight)
   - [x] Phase 2: Sunrise/Sunset Times (with visual progression bar)
   - [x] Phase 3: Weather Radar (RainViewer API, animated, expandable)
+  - [x] Phase 4: Moon Phase Display (astronomical calculation, day/night progression)
+  - [x] Phase 5: Severe Weather Alerts (NWS API, alert polygons, widget alerts)
 - [x] 15. Calendar Widget (Google Calendar/ICS support)
 - [x] 16. News Headlines Widget (RSS with keyword filtering)
 - [x] 17. Network Status Widget (Ping monitoring with custom targets)
@@ -90,6 +92,77 @@ personal-dash/
 - [ ] 21. Deployment & Documentation
 
 ## Recent Enhancements
+
+### Weather Widget - Severe Weather Alerts (Completed - 2026-02-14)
+**National Weather Service Integration**
+- Real-time severe weather alerts from NWS API (US locations)
+- Alert polygons overlaid on radar map with color-coded severity:
+  - 🔴 Extreme (red) - Tornadoes, extreme conditions
+  - 🟠 Severe (orange) - Severe thunderstorms, flash floods
+  - 🟡 Moderate (yellow) - Watches, advisories
+  - 🔵 Minor (blue) - Minor advisories
+- Alert details display with headline, affected areas, expiration
+- Clickable polygons with popups showing full alert information
+- Toggle to show/hide alerts on radar map
+- Background monitoring task (every 5 minutes) automatically triggers widget alerts
+- Severity mapping: NWS Extreme/Severe → Widget Critical/Warning alerts
+- Auto-clears widget alerts when weather threat ends
+- Graceful degradation for non-US locations (returns empty)
+
+**Technical Implementation:**
+- Backend:
+  - `fetch_nws_alerts()` function with User-Agent header
+  - `GET /weather/alerts` endpoint with GeoJSON support
+  - `WeatherAlert` and `WeatherAlertsResponse` schemas
+  - Background task `monitor_weather_alerts_task()` in scheduler
+  - Alert severity to widget severity mapping
+- Frontend:
+  - `AlertsOverlay` component using Leaflet GeoJSON layers
+  - Alert list display with severity colors
+  - Integration with radar map (overlay z-index management)
+  - Alert count display with toggle button
+  - Independent alert fetching (every 5 min)
+
+**Files Modified:**
+- `backend/app/api/v1/endpoints/weather.py` - NWS API integration + schemas
+- `backend/app/core/scheduler.py` - Weather alert monitoring task
+- `frontend/src/components/widgets/WeatherWidget.jsx` - Alert overlay + display
+
+**Documentation:**
+- `SEVERE_WEATHER_ALERTS_IMPLEMENTATION.md` - Complete implementation guide
+
+---
+
+### Weather Widget - Moon Phase Tracker (Completed - 2026-02-14)
+**Smart Day/Night Progression Bar with Moon Phase Display**
+- Current moon phase display with emoji (🌑🌒🌓🌔🌕🌖🌗🌘) and illumination percentage
+- Automatic day/night mode switching for progression bar:
+  - **Day mode:** Sun ☀️ progressing from sunrise → sunset (warm gradient)
+  - **Night mode:** Moon 🌙 progressing from sunset → sunrise (cool gradient)
+- Time remaining display ("Xh Ym until sunrise/sunset")
+- No external API dependencies - pure astronomical calculation
+- Cross-platform time formatting fix
+
+**Moon Phase Calculation:**
+- Uses lunar synodic month (29.53 days) formula
+- Reference: January 6, 2000 new moon
+- 8 distinct phases mapped to emojis and names
+- Illumination percentage calculated mathematically
+
+**Technical Implementation:**
+- Backend: `calculate_moon_phase()` function, `MoonPhase` model
+- Frontend: `MoonPhase` component, enhanced `SunTimes` smart bar
+- Automatic mode detection based on current time
+- Smooth animated transitions between indicators
+
+**Files Modified:**
+- `backend/app/api/v1/endpoints/weather.py` - Moon phase calculation + cross-platform fix
+- `frontend/src/components/widgets/WeatherWidget.jsx` - Moon display + smart bar
+
+**Documentation:**
+- `MOON_PHASE_IMPLEMENTATION.md` - Complete implementation guide
+
+---
 
 ### Calendar Widget - Smart Event Display (Completed - 2026-02-13)
 **Intelligent Auto-View Selection**
@@ -268,9 +341,9 @@ personal-dash/
 
 ---
 
-## Pending Work - Ranked by Difficulty
+## Pending Work - Ranked by Priority
 
-> **Note:** Ranked from easiest to hardest. See `docs/BACKLOG.md` for detailed specifications.
+> **Note:** Ranked by priority and dependencies. See `docs/BACKLOG.md` for detailed specifications.
 
 ### ✅ Recently Completed
 
@@ -282,37 +355,34 @@ personal-dash/
 6. ~~**Email Integration for Package Tracking**~~ ✅
 7. ~~**Widget Alert System**~~ ✅
 8. ~~**Stock & Crypto - Portfolio value graph**~~ ✅
+9. ~~**Calendar - Smart event display**~~ ✅
+10. ~~**Package Tracker - Midnight cleanup**~~ ✅
+11. ~~**Weather - Severe weather alerts**~~ ✅
 
-### 🟢 Easy (2-5 hours)
+### 🟡 Next Up (Ready to Start)
 
-1. **Picture Frame widget** (~4-5 hours)
-   - Display images from directory (slideshow/random)
+1. **Custom Widget System** (~15-20 hours) ← **NEXT**
+   - Generic database-driven widget system
+   - Users populate tables, dashboard renders automatically
+   - See `docs/CUSTOM_WIDGET_SPEC.md` for full specification
+   - Features: display data, external links, show/hide, alerts, acknowledgment
+   - Use cases: service monitoring, KPI dashboards, task tracking
 
-2. **Package Tracker - Improve delivery detection** (~3-4 hours)
-   - Change from 24-hour removal to next-midnight removal for better visibility
+### 🔴 Future Work
 
-### 🟡 Moderate (5-8 hours)
-
-3. **Fitness Stats widget** (~5-6 hours)
-   - Body weight tracking with charts
-
-4. **Weather - Severe weather alerts** (~6-8 hours)
-   - Overlay alerts on radar map
-
-5. ~~**Calendar - Smart event display**~~ ✅ **COMPLETED** (2026-02-13, ~3 hours)
-   - Progressive fallback: today → week → month with auto-selection
-
-6. **Weather - Moon phase tracker** (~5-6 hours)
-   - Display current moon phase with icon and illumination percentage
-
-### 🔴 Complex (8-20+ hours)
-
-8. **Stock & Crypto - Portfolio value graph** (~8-10 hours)
-   - Daily/weekly portfolio tracking (requires database caching - ✅ DONE)
-
-9. **Smart Home widget** (~10-15 hours)
+3. **Smart Home widget** (~10-15 hours)
    - Home Assistant integration
 
-10. **Deployment & Documentation** (~10-20+ hours)
-    - Deployment scripts, systemd services, Nginx config
-    - Production deployment guide
+4. **Deployment & Documentation** (~10-20+ hours)
+   - Deployment scripts, systemd services, Nginx config
+   - Production deployment guide
+
+### ⏸️ Deferred (Pending Decisions)
+
+5. **Fitness Stats widget** (~5-6 hours)
+   - Body weight tracking with charts
+   - **Reason:** Pending decision on Garmin Connect integration scope
+
+6. **Picture Frame widget** (~4-5 hours)
+   - Display images from directory (slideshow/random)
+   - **Reason:** Requires external project dependency

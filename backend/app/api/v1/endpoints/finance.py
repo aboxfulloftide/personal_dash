@@ -1,4 +1,5 @@
 import httpx
+import json
 from datetime import datetime, timedelta
 from fastapi import APIRouter, HTTPException, Query, Depends
 from pydantic import BaseModel
@@ -7,6 +8,7 @@ from sqlalchemy.orm import Session
 from app.api.v1.deps import CurrentActiveUser
 from app.core.database import get_db
 from app.crud import finance as finance_crud
+from app.schemas.finance import PortfolioHistoryResponse
 
 # Minimum time between database records (15 minutes)
 # This ensures we store ~3-4 records per hour, not every API call
@@ -331,3 +333,67 @@ async def get_crypto_prices(
                 ))
 
     return CryptoResponse(prices=prices)
+
+
+# =============================================================================
+# Portfolio History
+# =============================================================================
+
+@router.get("/stocks/portfolio-history", response_model=PortfolioHistoryResponse)
+async def get_stock_portfolio_history(
+    current_user: CurrentActiveUser,
+    holdings: str = Query(..., description="JSON array of holdings: [{\"symbol\": \"AAPL\", \"shares\": 10}, ...]"),
+    days: int = Query(90, ge=1, le=365, description="Number of days of history"),
+    db: Session = Depends(get_db),
+):
+    """
+    Calculate stock portfolio value over time.
+
+    Returns daily data points for ≤30 days, weekly for >30 days.
+    """
+    try:
+        holdings_list = json.loads(holdings)
+    except json.JSONDecodeError:
+        raise HTTPException(status_code=400, detail="Invalid holdings JSON")
+
+    if not isinstance(holdings_list, list):
+        raise HTTPException(status_code=400, detail="Holdings must be a JSON array")
+
+    result = finance_crud.calculate_portfolio_history(
+        db=db,
+        holdings=holdings_list,
+        days=days,
+        is_crypto=False
+    )
+
+    return PortfolioHistoryResponse(**result)
+
+
+@router.get("/crypto/portfolio-history", response_model=PortfolioHistoryResponse)
+async def get_crypto_portfolio_history(
+    current_user: CurrentActiveUser,
+    holdings: str = Query(..., description="JSON array of holdings: [{\"coin\": \"bitcoin\", \"amount\": 0.5}, ...]"),
+    days: int = Query(90, ge=1, le=365, description="Number of days of history"),
+    db: Session = Depends(get_db),
+):
+    """
+    Calculate crypto portfolio value over time.
+
+    Returns daily data points for ≤30 days, weekly for >30 days.
+    """
+    try:
+        holdings_list = json.loads(holdings)
+    except json.JSONDecodeError:
+        raise HTTPException(status_code=400, detail="Invalid holdings JSON")
+
+    if not isinstance(holdings_list, list):
+        raise HTTPException(status_code=400, detail="Holdings must be a JSON array")
+
+    result = finance_crud.calculate_portfolio_history(
+        db=db,
+        holdings=holdings_list,
+        days=days,
+        is_crypto=True
+    )
+
+    return PortfolioHistoryResponse(**result)

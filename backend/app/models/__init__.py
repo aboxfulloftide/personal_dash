@@ -3,6 +3,7 @@ from app.models.auth import RefreshToken, PasswordResetToken
 from app.models.widget import WidgetConfig, DashboardLayout
 from app.models.server import Server, ServerMetric, DockerContainer, ServerAlert, AlertHistory
 from app.models.package import Package, PackageEvent, EmailAccount
+from app.models.email_credential import EmailCredential
 from app.models.fitness import WeightEntry
 from app.models.cache import APICache
 from app.models.finance import StockQuote, CryptoPrice
@@ -21,6 +22,7 @@ __all__ = [
     "Package",
     "PackageEvent",
     "EmailAccount",
+    "EmailCredential",
     "WeightEntry",
     "APICache",
     "StockQuote",

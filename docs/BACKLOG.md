@@ -7,17 +7,23 @@
 ## Priority Summary
 
 ### High Priority (Do Next)
-1. **Network Status Widget Phase 2** - Builds on completed Phase 1, adds valuable packet loss and uptime tracking
-2. ~~**Stock/Crypto: Portfolio Value Graph**~~ ✅ **COMPLETED** (2026-02-13)
+1. **Custom Widget System** (~15-20 hours) - Generic database-driven widgets ← **NEXT**
+   - See `docs/CUSTOM_WIDGET_SPEC.md` for complete specification
+   - Users populate database tables, dashboard renders automatically
+   - Supports display, links, visibility, alerts, acknowledgment
 
 ### Medium Priority (Soon)
-3. ~~**Package Tracker: Auto-remove Delivered**~~ ✅ **COMPLETED**
-4. **News: Priority Keywords** - Already partially implemented, needs UI enhancement
-5. **Server Monitor: Track Specific Processes** - Already completed, but may need additional features
+3. **News: Priority Keywords** - Already partially implemented, needs UI enhancement
+4. **Server Monitor: Track Specific Processes** - Already completed, but may need additional features
+5. **Smart Home Widget** (~10-15 hours) - Home Assistant integration
 
 ### Lower Priority (Later)
-7. **Weather Widget Enhancements** - Nice to have additions
-8. **Network Speed Test Widget** - Separate widget, different from Network Status
+6. **Network Status Widget Phase 2** - Packet loss and uptime tracking (Phase 1 & 3 completed)
+7. **Deployment & Documentation** (~10-20+ hours) - Production deployment guide
+
+### Deferred (External Dependencies / Scope TBD)
+8. **Fitness Stats Widget** - Deferred pending decision on Garmin Connect integration scope
+9. **Picture Frame Widget** - Deferred due to external project dependency
 
 ---
 
@@ -211,58 +217,113 @@ Add ability to monitor specific processes/services and their status.
 
 ## Weather Widget
 
-### Enhancements
+### Completed
 
-#### Moon Phase Tracker with Sunrise Countdown
-**Status:** Not Started
-**Priority:** Low-Medium
-**Estimated Effort:** ~4-6 hours
+#### Moon Phase Tracker with Smart Day/Night Progression Bar ✓
+**Completed:** 2026-02-14
+**Priority:** High
+**Actual Effort:** ~2 hours
 **Description:**
-Add a moon phase visualization that shows the current moon phase and tracks time until sunrise, similar to the existing sun progression bar.
+Implemented moon phase visualization with smart day/night progression bar that automatically switches between sun and moon modes.
 
-**Requirements:**
-- Display current moon phase with appropriate emoji/icon:
-  - 🌑 New Moon
-  - 🌒 Waxing Crescent
-  - 🌓 First Quarter
-  - 🌔 Waxing Gibbous
-  - 🌕 Full Moon
-  - 🌖 Waning Gibbous
-  - 🌗 Last Quarter
-  - 🌘 Waning Crescent
-- Show progression bar from current time to next sunrise
-- Animated moon icon that moves along the bar (like the sun indicator)
-- Display time until sunrise (e.g., "5h 23m until sunrise")
-- Moon illumination percentage (e.g., "87% illuminated")
-- Place below or adjacent to sun progression bar
+**Implemented Features:**
+
+**Part 1: Moon Phase Display** ✅
+- Current moon phase emoji (🌑🌒🌓🌔🌕🌖🌗🌘)
+- Moon phase name (e.g., "Waxing Gibbous")
+- Illumination percentage (0-100%)
+- Placed between sun times and hourly forecast
+
+**Part 2: Smart Day/Night Progression Bar** ✅
+- **DAY MODE (sunrise to sunset):**
+  - Sun ☀️ indicator progressing from sunrise → sunset
+  - Orange/yellow gradient (warm colors)
+  - Shows "Xh Ym until sunset"
+
+- **NIGHT MODE (sunset to sunrise):**
+  - Moon 🌙 indicator progressing from sunset → next sunrise
+  - Indigo/purple gradient (night sky colors)
+  - Shows "Xh Ym until sunrise"
+  - Handles midnight correctly (progress continues through midnight)
 
 **Technical Implementation:**
-- Backend: Add moon phase calculation endpoint
-  - Use astronomy library (e.g., `ephem`, `skyfield`, or `astral`)
-  - Calculate moon phase based on date/time
-  - Calculate illumination percentage
-  - Return moon phase name, percentage, and emoji
-- Frontend: Create MoonProgressBar component
-  - Similar structure to sun progression bar
-  - Calculate progress from midnight to sunrise
-  - Animate moon icon position
-  - Display moon phase emoji and stats
-- API: Free astronomical APIs available (e.g., Open-Meteo astronomy endpoint)
+- Backend:
+  - `calculate_moon_phase()` function using astronomical formula
+  - Reference: January 6, 2000 new moon
+  - Lunar synodic month: 29.530588853 days
+  - No external dependencies (pure math)
+  - Added `MoonPhase` model to API response
+  - Fixed cross-platform time formatting (%-I → %I with lstrip)
 
-**UI/UX Notes:**
-- Keep visual style consistent with sun progression bar
-- Use subtle gradient (dark blue/purple for night)
-- Moon icon should be clearly visible against background
-- Show countdown timer that updates in real-time
+- Frontend:
+  - `MoonPhase` component for phase display
+  - Enhanced `SunTimes` component to smart day/night bar
+  - Automatic mode detection based on current time
+  - `formatTimeRemaining()` helper function
+  - Smooth animated transitions
 
-**Related Files:**
+**Files Modified:**
 - `backend/app/api/v1/endpoints/weather.py`
 - `frontend/src/components/widgets/WeatherWidget.jsx`
+
+**Documentation:**
+- `MOON_PHASE_IMPLEMENTATION.md` - Complete implementation guide
+
+---
+
+#### Severe Weather Alerts ✓
+**Completed:** 2026-02-14
+**Priority:** High
+**Actual Effort:** ~6 hours
+**Description:**
+Integrated National Weather Service API for real-time severe weather alerts with visual overlay on radar map and automatic widget alert triggering.
+
+**Implemented Features:**
+
+**Alert Display:**
+- ✅ NWS API integration (free, no key, US only)
+- ✅ Color-coded alert polygons on radar map:
+  - 🔴 Extreme (red) - Tornadoes, extreme weather
+  - 🟠 Severe (orange) - Severe thunderstorms, flash floods
+  - 🟡 Moderate (yellow) - Watches, advisories
+  - 🔵 Minor (blue) - Minor advisories
+- ✅ Clickable polygons with popup details
+- ✅ Alert list display (event, headline, expiration)
+- ✅ Toggle button to show/hide alerts on map
+- ✅ Alert count indicator
+
+**Widget Alert System Integration:**
+- ✅ Background monitoring task (every 5 minutes)
+- ✅ Auto-triggers widget alerts for urgent weather (Immediate/Expected urgency)
+- ✅ Severity mapping: NWS Extreme → Critical, Severe → Warning
+- ✅ Auto-clears widget alerts when weather threat ends
+- ✅ Alert aggregation (shows multiple alerts)
+
+**Technical Implementation:**
+- Backend:
+  - `fetch_nws_alerts(lat, lon)` - GeoJSON polygon support
+  - `GET /weather/alerts` endpoint
+  - `WeatherAlert` and `WeatherAlertsResponse` schemas
+  - `monitor_weather_alerts_task()` scheduler job
+  - Alert severity to widget severity mapping
+- Frontend:
+  - `AlertsOverlay` component (Leaflet GeoJSON layers)
+  - `WeatherAlertsList` component
+  - Independent 5-minute alert refresh
+  - Alert toggle button
+
+**Files Modified:**
+- `backend/app/api/v1/endpoints/weather.py` - NWS integration
+- `backend/app/core/scheduler.py` - Monitoring task
+- `frontend/src/components/widgets/WeatherWidget.jsx` - Alert display
+
+**Documentation:**
+- `SEVERE_WEATHER_ALERTS_IMPLEMENTATION.md` - Complete guide
 
 ---
 
 ### Future Enhancements
-- Severe weather alerts overlay on radar
+- International weather alerts (Canada: Environment Canada, Europe: MeteoAlarm)
 - Golden hour times for photographers
 - Air quality index
 - Extended forecast (10-14 days)
@@ -841,6 +902,81 @@ Optimize widget refresh behavior to only re-render widgets when their data has a
 
 ---
 
+## Deferred Widgets
+
+### Fitness Stats Widget
+**Status:** Deferred
+**Priority:** Low (pending scope decision)
+**Estimated Effort:** ~5-6 hours
+**Description:**
+Body weight tracking widget with historical charts. Deferred pending decision on whether Garmin Connect integration is in scope for this project.
+
+**Potential Requirements:**
+- Manual body weight entry
+- Historical tracking with line chart
+- Goal setting and progress tracking
+- BMI calculation
+- Weight trends (7-day/30-day averages)
+- **Optional:** Garmin Connect integration for automatic sync
+
+**Technical Implementation:**
+- Backend:
+  - `weight_entries` table (user_id, date, weight, notes)
+  - API endpoints for CRUD operations
+  - Optional: Garmin Connect API integration
+- Frontend:
+  - Weight entry form
+  - Recharts line graph showing weight over time
+  - Summary stats (current, goal, change)
+  - Date range selector
+
+**Decision Required:**
+- Should this widget include Garmin Connect integration?
+- Or keep it simple with manual entry only?
+
+---
+
+### Picture Frame Widget
+**Status:** Deferred
+**Priority:** Low (external dependency)
+**Estimated Effort:** ~4-5 hours
+**Description:**
+Digital photo frame widget that displays images from a directory. Deferred due to external project dependency.
+
+**Requirements:**
+- Display images from configured directory path
+- Display modes:
+  - Slideshow (auto-advance with configurable interval)
+  - Random (new random image on each load)
+  - Sequential (cycle through images in order)
+- Image controls:
+  - Next/Previous buttons
+  - Pause/Play for slideshow
+  - Full-screen view option
+- Settings:
+  - Directory path configuration
+  - Slideshow interval (5s, 10s, 30s, 1min)
+  - Display mode selection
+  - Image fit (cover/contain)
+
+**Technical Implementation:**
+- Backend:
+  - Endpoint to list images from directory
+  - Image serving endpoint (static file serving)
+  - Support for common formats (jpg, png, gif, webp)
+  - Error handling for missing/invalid paths
+- Frontend:
+  - Image carousel component
+  - Auto-advance timer for slideshow
+  - Responsive image display
+  - Loading states for large images
+
+**External Dependency:**
+- Requires image source/collection to be set up first
+- May need separate photo management system
+
+---
+
 ## General / Other Widgets
 
 _(Add more items here as needed)_
@@ -920,3 +1056,311 @@ Added drive/mount monitoring to Server Monitor widget with usage tracking and st
 - `backend/alembic/versions/*_add_monitored_drives.py` - Migration
 - `frontend/src/components/widgets/ServerMonitorWidget.jsx` - UI components
 - `frontend/src/components/widgets/widgetRegistry.js` - Settings
+
+---
+
+## Custom Widget System
+
+### Overview
+**Status:** Design Complete - Ready to Implement
+**Priority:** High (Next Major Feature)
+**Estimated Effort:** ~15-20 hours
+**Specification:** `docs/CUSTOM_WIDGET_SPEC.md`
+
+**Description:**
+A generic database-driven widget system that allows users to create custom dashboard widgets without writing code. Users populate database tables, and the dashboard automatically renders the data with full support for alerts, links, visibility control, and acknowledgment.
+
+### Key Features
+
+#### Core Capabilities
+- ✅ Display custom data in list/table/grid formats
+- ✅ External links (clickable items that open URLs)
+- ✅ Conditional visibility (show/hide items via database flag)
+- ✅ Alert triggering (automatic widget alerts based on data)
+- ✅ Acknowledgment system (users can acknowledge alerts via UI)
+- ✅ Styling options (icons, colors, highlights)
+- ✅ Sorting and prioritization
+- ✅ Multi-user isolation (per-user widgets and data)
+
+#### Use Cases
+1. **Service Health Monitoring** - Bash scripts check services, update database
+2. **Sales KPI Dashboard** - Hourly scripts pull metrics from CRM/database
+3. **Task/Reminder System** - Alert on overdue tasks, deadlines
+4. **External Alert Aggregator** - Consolidate PagerDuty, Datadog, etc.
+5. **Custom Status Boards** - Project status, team availability
+
+### Database Schema
+
+#### Table: `custom_widgets`
+Widget configuration (one per widget instance):
+```sql
+CREATE TABLE custom_widgets (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    user_id INT NOT NULL,
+    widget_id VARCHAR(50) NOT NULL,        -- Unique ID
+    name VARCHAR(100) NOT NULL,            -- Display name
+    description TEXT,
+    display_mode VARCHAR(20) DEFAULT 'list', -- 'list', 'table', 'grid'
+    max_items INT DEFAULT 10,
+    enable_alerts BOOLEAN DEFAULT TRUE,
+    auto_alert BOOLEAN DEFAULT TRUE,       -- Auto-trigger on alert_active=true
+    alert_aggregation VARCHAR(20) DEFAULT 'highest', -- 'highest', 'first', 'count'
+    sort_column VARCHAR(50) DEFAULT 'priority',
+    sort_direction VARCHAR(4) DEFAULT 'desc',
+    refresh_interval INT DEFAULT 60,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    UNIQUE KEY unique_user_widget (user_id, widget_id)
+);
+```
+
+#### Table: `custom_widget_data`
+Actual data rows displayed in widget:
+```sql
+CREATE TABLE custom_widget_data (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    custom_widget_id INT NOT NULL,
+    
+    -- Display fields
+    title VARCHAR(255) NOT NULL,
+    subtitle VARCHAR(255),
+    description TEXT,
+    icon VARCHAR(50),                      -- Emoji: '⚠️', '✅', etc.
+    
+    -- Linking
+    link_url TEXT,                         -- External URL
+    link_text VARCHAR(100),                -- Button text
+    
+    -- Visibility
+    visible BOOLEAN DEFAULT TRUE,          -- Show/hide item
+    
+    -- Alerting
+    alert_active BOOLEAN DEFAULT FALSE,    -- Trigger widget alert
+    alert_severity VARCHAR(20),            -- 'critical', 'warning', 'info'
+    alert_message VARCHAR(255),
+    acknowledged BOOLEAN DEFAULT FALSE,
+    acknowledged_at TIMESTAMP,
+    
+    -- Styling
+    highlight BOOLEAN DEFAULT FALSE,
+    color VARCHAR(20),                     -- 'red', 'yellow', 'green', 'blue'
+    
+    -- Ordering
+    priority INT DEFAULT 0,                -- Higher = top
+    
+    -- Custom fields
+    custom_fields JSON,                    -- Extensibility
+    
+    -- Metadata
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    
+    FOREIGN KEY (custom_widget_id) REFERENCES custom_widgets(id) ON DELETE CASCADE,
+    INDEX idx_widget_visible (custom_widget_id, visible),
+    INDEX idx_widget_priority (custom_widget_id, priority),
+    INDEX idx_alert_active (custom_widget_id, alert_active)
+);
+```
+
+### Data Rules
+
+#### Visibility Rules
+```sql
+-- Hide item (won't display)
+UPDATE custom_widget_data SET visible = false WHERE id = 123;
+
+-- Show item
+UPDATE custom_widget_data SET visible = true WHERE id = 123;
+```
+
+#### Alert Triggering Rules
+```sql
+-- Trigger critical alert (auto-triggers widget alert system)
+UPDATE custom_widget_data 
+SET alert_active = true,
+    alert_severity = 'critical',
+    alert_message = 'Database server is down!'
+WHERE id = 123;
+
+-- Clear alert
+UPDATE custom_widget_data 
+SET alert_active = false 
+WHERE id = 123;
+
+-- User acknowledges via UI → Dashboard sets:
+SET acknowledged = true, acknowledged_at = NOW()
+```
+
+**Alert Severity Mapping:**
+- `critical` → Red pulsing widget border (moves to top)
+- `warning` → Yellow border (moves to top)
+- `info` → Blue border (normal position)
+
+#### Link Behavior Rules
+```sql
+-- Add clickable link
+UPDATE custom_widget_data 
+SET link_url = 'https://monitoring.example.com/incidents/123',
+    link_text = 'View Incident'
+WHERE id = 123;
+```
+- Opens in new tab with security (`rel="noopener noreferrer"`)
+
+### User Workflow Example
+
+#### Step 1: Create Widget
+```sql
+INSERT INTO custom_widgets (user_id, widget_id, name, enable_alerts)
+VALUES (1, 'service-monitor', 'Production Services', true);
+```
+
+#### Step 2: Add Data
+```sql
+-- Normal item
+INSERT INTO custom_widget_data (custom_widget_id, title, subtitle, icon)
+VALUES (1, 'API Server', 'Status: Online', '✅');
+
+-- Alert item
+INSERT INTO custom_widget_data (
+    custom_widget_id, title, subtitle, icon,
+    alert_active, alert_severity, alert_message
+) VALUES (
+    1, 'Database', 'Status: Down', '🔴',
+    true, 'critical', 'Database connection failed!'
+);
+```
+
+#### Step 3: Automate Updates
+```bash
+#!/bin/bash
+# check_service.sh - Run via cron every 5 minutes
+
+if ! curl -sf http://api.example.com/health; then
+    # Service down - trigger alert
+    mysql personal_dash -e "
+        UPDATE custom_widget_data 
+        SET alert_active=true, 
+            alert_severity='critical',
+            subtitle='Status: Down',
+            icon='🔴'
+        WHERE title='API Server'
+    "
+fi
+```
+
+### API Endpoints (To Implement)
+
+```
+GET    /api/v1/custom-widgets
+POST   /api/v1/custom-widgets
+GET    /api/v1/custom-widgets/{widget_id}
+PUT    /api/v1/custom-widgets/{widget_id}
+DELETE /api/v1/custom-widgets/{widget_id}
+
+GET    /api/v1/custom-widgets/{widget_id}/data
+POST   /api/v1/custom-widgets/{widget_id}/data
+PUT    /api/v1/custom-widgets/{widget_id}/data/{item_id}
+DELETE /api/v1/custom-widgets/{widget_id}/data/{item_id}
+
+POST   /api/v1/custom-widgets/{widget_id}/data/{item_id}/acknowledge
+POST   /api/v1/custom-widgets/{widget_id}/data/bulk
+```
+
+### Implementation Phases
+
+#### Phase 1: Database Schema (~2 hours)
+- Create `custom_widgets` table
+- Create `custom_widget_data` table
+- Add Alembic migration
+- Add indexes for performance
+
+#### Phase 2: Backend API (~6-8 hours)
+- CRUD endpoints for widgets
+- CRUD endpoints for data
+- Acknowledgment endpoint
+- Bulk operations endpoint
+- Visibility filtering (only fetch visible items)
+- Alert aggregation logic
+- User isolation (enforce user_id checks)
+
+#### Phase 3: Frontend Widget (~6-8 hours)
+- Generic `CustomWidget.jsx` component
+- List display mode (default)
+- Table/Grid modes (future)
+- Alert triggering integration
+- Acknowledgment button
+- Link rendering (new tab, security)
+- Icon/color/highlight styling
+- Refresh mechanism
+- Error handling
+
+#### Phase 4: Documentation & Examples (~2 hours)
+- User guide with examples
+- Sample automation scripts (Bash, Python)
+- API documentation
+- Use case tutorials
+- Troubleshooting guide
+
+### What Dashboard DOES
+✅ Render data according to display rules
+✅ Trigger widget alerts when `alert_active = true`
+✅ Handle acknowledgment when user clicks button
+✅ Refresh data at configured interval
+✅ Apply sorting, filtering (visible items only)
+✅ Open links in new tabs with security
+
+### What Dashboard DOES NOT DO
+❌ Fetch data from external sources
+❌ Run background tasks to update data
+❌ Validate data logic or business rules
+❌ Auto-delete old items
+❌ Transform or aggregate data
+❌ Send external notifications
+
+**User responsibility:**
+- Writing scripts/automation to populate data
+- Scheduling data updates (cron, systemd timers)
+- Data cleanup and maintenance
+- External integrations
+- Business logic
+
+### Security Considerations
+- ✅ Per-user data isolation (foreign key constraints)
+- ✅ SQL injection prevention (SQLAlchemy ORM)
+- ✅ XSS prevention (React escaping)
+- ✅ Safe external links (`rel="noopener noreferrer"`)
+- ✅ API authentication (JWT tokens)
+
+### Testing Plan
+1. Create widget via API
+2. Populate data with various field combinations
+3. Test visibility toggling
+4. Test alert triggering and acknowledgment
+5. Test link rendering and security
+6. Test sorting and prioritization
+7. Test multi-user isolation
+8. Load testing (many items, many widgets)
+
+### Documentation Deliverables
+- [ ] `CUSTOM_WIDGET_SPEC.md` - Complete specification ✅ **DONE**
+- [ ] User guide with examples
+- [ ] API reference
+- [ ] Sample automation scripts
+- [ ] Migration guide
+
+### Future Enhancements (Post-MVP)
+- Display modes: Table, Grid, Compact
+- Custom field rendering
+- Widget templates library
+- Import/export functionality
+- Webhook endpoints for external systems
+- Rate limiting on data updates
+- Data retention policies (auto-delete after N days)
+- Chart/graph display mode
+- Image support in items
+- Rich text description formatting
+
+---
+
+**Complete Specification:** See `docs/CUSTOM_WIDGET_SPEC.md` for full design details, data rules, examples, and implementation guide.

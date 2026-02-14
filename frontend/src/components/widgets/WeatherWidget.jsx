@@ -22,28 +22,47 @@ function WeatherIcon({ icon, size = 'large' }) {
 function SunTimes({ sunTimes }) {
   if (!sunTimes) return null;
 
-  // Calculate progress through the day (0-100%)
   const now = Date.now() / 1000; // Current time in seconds
   const sunriseTime = sunTimes.sunrise_timestamp;
   const sunsetTime = sunTimes.sunset_timestamp;
 
-  let progress = 0;
-  let isDay = false;
+  // Determine if we're in day mode (between sunrise and sunset) or night mode
+  const isDay = now >= sunriseTime && now < sunsetTime;
 
-  if (now < sunriseTime) {
-    // Before sunrise - show 0% (night)
-    progress = 0;
-    isDay = false;
-  } else if (now >= sunriseTime && now <= sunsetTime) {
-    // Between sunrise and sunset - calculate progress
+  let progress = 0;
+  let timeUntilTransition = "";
+  let indicatorEmoji = "";
+  let gradientClass = "";
+
+  if (isDay) {
+    // DAY MODE: Show sun progress from sunrise to sunset
     const dayLength = sunsetTime - sunriseTime;
     const elapsed = now - sunriseTime;
-    progress = (elapsed / dayLength) * 100;
-    isDay = true;
+    progress = Math.min(100, (elapsed / dayLength) * 100);
+
+    // Calculate time until sunset
+    const secondsUntilSunset = sunsetTime - now;
+    timeUntilTransition = formatTimeRemaining(secondsUntilSunset, "sunset");
+
+    indicatorEmoji = "☀️";
+    gradientClass = "bg-gradient-to-r from-orange-400 via-yellow-300 to-orange-400";
   } else {
-    // After sunset - show 100% (night)
-    progress = 100;
-    isDay = false;
+    // NIGHT MODE: Show moon progress from sunset to next sunrise
+    // Calculate next sunrise (either today if before sunrise, or tomorrow if after sunset)
+    const nextSunrise = now < sunriseTime ? sunriseTime : sunriseTime + 86400; // Add 24 hours
+
+    // Night period is from sunset to next sunrise
+    let nightStart = now < sunriseTime ? sunsetTime - 86400 : sunsetTime; // Yesterday's or today's sunset
+    const nightLength = nextSunrise - nightStart;
+    const elapsed = now - nightStart;
+    progress = Math.min(100, (elapsed / nightLength) * 100);
+
+    // Calculate time until sunrise
+    const secondsUntilSunrise = nextSunrise - now;
+    timeUntilTransition = formatTimeRemaining(secondsUntilSunrise, "sunrise");
+
+    indicatorEmoji = "🌙";
+    gradientClass = "bg-gradient-to-r from-indigo-600 via-purple-500 to-indigo-600";
   }
 
   return (
@@ -58,21 +77,61 @@ function SunTimes({ sunTimes }) {
           <span className="text-gray-700 dark:text-gray-300">{sunTimes.sunset}</span>
         </div>
       </div>
-      {/* Progress bar */}
+
+      {/* Time until next transition */}
+      <div className="text-xs text-center text-gray-500 dark:text-gray-400 mb-1">
+        {timeUntilTransition}
+      </div>
+
+      {/* Smart Day/Night Progress bar */}
       <div className="relative h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
         <div
-          className={`absolute top-0 left-0 h-full transition-all duration-500 ${
-            isDay
-              ? 'bg-gradient-to-r from-orange-400 via-yellow-300 to-orange-400'
-              : 'bg-gray-400 dark:bg-gray-600'
-          }`}
+          className={`absolute top-0 left-0 h-full transition-all duration-500 ${gradientClass}`}
           style={{ width: `${progress}%` }}
         />
-        {/* Sun indicator */}
+        {/* Sun/Moon indicator */}
         <div
-          className="absolute top-1/2 -translate-y-1/2 w-3 h-3 rounded-full bg-yellow-400 border-2 border-white dark:border-gray-800 shadow-lg transition-all duration-500"
-          style={{ left: `calc(${progress}% - 6px)` }}
-        />
+          className="absolute top-1/2 -translate-y-1/2 transition-all duration-500 flex items-center justify-center"
+          style={{ left: `calc(${progress}% - 8px)` }}
+        >
+          <span className="text-sm drop-shadow-lg">{indicatorEmoji}</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Helper function to format time remaining
+function formatTimeRemaining(seconds, eventName) {
+  if (seconds <= 0) return "";
+
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+
+  if (hours > 0) {
+    return `${hours}h ${minutes}m until ${eventName}`;
+  } else {
+    return `${minutes}m until ${eventName}`;
+  }
+}
+
+function MoonPhase({ moonPhase }) {
+  if (!moonPhase) return null;
+
+  return (
+    <div className="px-2 py-2 border-t border-gray-200 dark:border-gray-700">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <span className="text-2xl">{moonPhase.phase_emoji}</span>
+          <div className="flex flex-col">
+            <span className="text-xs font-medium text-gray-700 dark:text-gray-300">
+              {moonPhase.phase_name}
+            </span>
+            <span className="text-xs text-gray-500 dark:text-gray-400">
+              {moonPhase.illumination}% illuminated
+            </span>
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -207,6 +266,72 @@ function RadarOverlay({ frames, host, currentFrameIndex }) {
   return null;
 }
 
+// Alerts overlay component for radar map
+function AlertsOverlay({ alerts }) {
+  const map = useMap();
+  const alertLayersRef = useRef([]);
+
+  useEffect(() => {
+    if (!alerts || alerts.length === 0) {
+      // Clear existing alert layers
+      alertLayersRef.current.forEach(layer => map.removeLayer(layer));
+      alertLayersRef.current = [];
+      return;
+    }
+
+    // Import Leaflet dynamically
+    import('leaflet').then(({ default: L }) => {
+      // Clear old layers
+      alertLayersRef.current.forEach(layer => map.removeLayer(layer));
+      alertLayersRef.current = [];
+
+      // Add each alert polygon
+      alerts.forEach(alert => {
+        if (!alert.geometry) return;
+
+        // Determine color by severity
+        const colors = {
+          'Extreme': { color: '#DC2626', fillColor: '#FCA5A5', fillOpacity: 0.3 },
+          'Severe': { color: '#EA580C', fillColor: '#FDBA74', fillOpacity: 0.25 },
+          'Moderate': { color: '#EAB308', fillColor: '#FDE047', fillOpacity: 0.2 },
+          'Minor': { color: '#3B82F6', fillColor: '#93C5FD', fillOpacity: 0.15 },
+        };
+
+        const style = colors[alert.severity] || colors['Minor'];
+
+        // Create GeoJSON layer
+        const layer = L.geoJSON(alert.geometry, {
+          style: {
+            color: style.color,
+            weight: 2,
+            fillColor: style.fillColor,
+            fillOpacity: style.fillOpacity,
+          }
+        }).addTo(map);
+
+        // Add popup with alert details
+        const popupContent = `
+          <div style="max-width: 300px;">
+            <strong style="color: ${style.color};">${alert.event}</strong><br/>
+            <em>${alert.headline}</em><br/>
+            <small>${alert.affected_areas}</small>
+          </div>
+        `;
+        layer.bindPopup(popupContent);
+
+        alertLayersRef.current.push(layer);
+      });
+    });
+
+    return () => {
+      alertLayersRef.current.forEach(layer => map.removeLayer(layer));
+      alertLayersRef.current = [];
+    };
+  }, [alerts, map]);
+
+  return null;
+}
+
 function WeatherRadar({ location }) {
   const [expanded, setExpanded] = useState(false);
   const [radarData, setRadarData] = useState(null);
@@ -214,6 +339,8 @@ function WeatherRadar({ location }) {
   const [error, setError] = useState(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentFrameIndex, setCurrentFrameIndex] = useState(0);
+  const [alertsData, setAlertsData] = useState(null);
+  const [showAlerts, setShowAlerts] = useState(true);
   const animationRef = useRef(null);
 
   // Parse location coordinates
@@ -238,6 +365,22 @@ function WeatherRadar({ location }) {
         .finally(() => setLoading(false));
     }
   }, [expanded, radarData, loading]);
+
+  // Fetch alerts when expanded
+  useEffect(() => {
+    if (expanded && !alertsData && location) {
+      api.get('/weather/alerts', {
+        params: { location }
+      })
+        .then(response => {
+          setAlertsData(response.data);
+        })
+        .catch(err => {
+          console.error('Failed to load weather alerts:', err);
+          setAlertsData({ alerts: [], alert_count: 0 });
+        });
+    }
+  }, [expanded, location, alertsData]);
 
   // Animation loop
   useEffect(() => {
@@ -313,11 +456,14 @@ function WeatherRadar({ location }) {
                   host={radarData.host}
                   currentFrameIndex={currentFrameIndex}
                 />
+                {showAlerts && alertsData && alertsData.alerts && (
+                  <AlertsOverlay alerts={alertsData.alerts} />
+                )}
               </MapContainer>
             </div>
 
             {/* Animation controls */}
-            <div className="flex items-center justify-between text-xs">
+            <div className="flex items-center justify-between text-xs mb-2">
               <button
                 onClick={() => setIsPlaying(!isPlaying)}
                 className="px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
@@ -328,6 +474,21 @@ function WeatherRadar({ location }) {
                 {radarData.frames.length} frames • {Math.round(radarData.frames.length * 0.5 / 60)} min
               </span>
             </div>
+
+            {/* Alert toggle button */}
+            {alertsData && alertsData.alert_count > 0 && (
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-gray-600 dark:text-gray-400">
+                  {alertsData.alert_count} active alert{alertsData.alert_count !== 1 ? 's' : ''}
+                </span>
+                <button
+                  onClick={() => setShowAlerts(!showAlerts)}
+                  className="text-blue-600 hover:text-blue-800 dark:text-blue-400"
+                >
+                  {showAlerts ? 'Hide' : 'Show'} Alerts
+                </button>
+              </div>
+            )}
           </>
         )}
       </div>
@@ -351,6 +512,38 @@ function SelectedDayHourly({ forecast, selectedDate, units, externalUrl }) {
   );
 }
 
+function WeatherAlertsList({ alerts }) {
+  if (!alerts || alerts.length === 0) return null;
+
+  return (
+    <div className="border-t border-gray-200 dark:border-gray-700 mt-2 pt-2">
+      <div className="text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1 flex items-center gap-1">
+        <span>⚠️</span>
+        <span>Active Weather Alerts</span>
+      </div>
+      {alerts.map((alert, idx) => {
+        const severityColors = {
+          'Extreme': 'text-red-600 dark:text-red-400',
+          'Severe': 'text-orange-600 dark:text-orange-400',
+          'Moderate': 'text-yellow-600 dark:text-yellow-400',
+          'Minor': 'text-blue-600 dark:text-blue-400',
+        };
+        const colorClass = severityColors[alert.severity] || severityColors['Minor'];
+
+        return (
+          <div key={idx} className="mb-2 text-xs">
+            <div className={`font-medium ${colorClass}`}>{alert.event}</div>
+            <div className="text-gray-600 dark:text-gray-400">{alert.headline}</div>
+            <div className="text-gray-500 dark:text-gray-500 text-xs">
+              Until {new Date(alert.expires).toLocaleString()}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 export default function WeatherWidget({ config }) {
   const [selectedDate, setSelectedDate] = useState(null);
 
@@ -364,6 +557,14 @@ export default function WeatherWidget({ config }) {
       external_forecast_provider: config.external_forecast_provider || 'windy',
     },
     refreshInterval: config.refresh_interval || 900,
+    enabled: !!config.location,
+  });
+
+  // Fetch alerts independently (separate from radar)
+  const { data: alertsData } = useWidgetData({
+    endpoint: '/weather/alerts',
+    params: { location: config.location },
+    refreshInterval: 300,  // 5 minutes
     enabled: !!config.location,
   });
 
@@ -415,6 +616,20 @@ export default function WeatherWidget({ config }) {
       {data.sun_times && (
         <div className="flex-shrink-0">
           <SunTimes sunTimes={data.sun_times} />
+        </div>
+      )}
+
+      {/* Moon phase */}
+      {data.moon_phase && (
+        <div className="flex-shrink-0">
+          <MoonPhase moonPhase={data.moon_phase} />
+        </div>
+      )}
+
+      {/* Active weather alerts */}
+      {alertsData && alertsData.alert_count > 0 && (
+        <div className="flex-shrink-0">
+          <WeatherAlertsList alerts={alertsData.alerts} />
         </div>
       )}
 

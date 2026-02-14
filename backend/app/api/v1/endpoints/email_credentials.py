@@ -11,8 +11,8 @@ from app.crud.email_credential import (
     delete_email_credential,
 )
 from app.core.encryption import decrypt_password
-from app.crud.package import create_package, get_packages
-from app.api.v1.endpoints.email_scanner import scan_imap_email
+from app.crud.package import create_package, get_packages, mark_package_delivered_by_tracking
+from app.api.v1.endpoints.email_scanner import scan_imap_email, clean_email_subject
 from app.schemas.email_credential import (
     EmailCredentialCreate,
     EmailCredentialUpdate,
@@ -174,11 +174,20 @@ async def manual_scan(
 
             # Create package
             try:
+                # Clean the subject line
+                cleaned_subject = clean_email_subject(tracking_info.found_in_subject)
+
                 package_data = PackageCreate(
                     tracking_number=tracking_number,
                     carrier=tracking_info.carrier.lower(),
-                    description=f"Auto: {tracking_info.found_in_subject[:50]}",
+                    description=f"Auto: {cleaned_subject[:50]}",
                     status="in_transit",
+                    email_source=credential.email_address,
+                    email_subject=tracking_info.found_in_subject,  # Keep original for preview
+                    email_sender=tracking_info.email_sender,
+                    email_date=tracking_info.found_date,
+                    email_body_snippet=tracking_info.email_body_snippet,
+                    tracking_url=tracking_info.tracking_url,
                 )
                 create_package(db, current_user.id, package_data)
                 packages_added += 1
@@ -186,12 +195,31 @@ async def manual_scan(
                 # Log error but continue
                 print(f"Failed to create package: {e}")
 
+        # Process delivery confirmations
+        packages_delivered = 0
+        for delivery_info in scan_result.delivery_confirmations:
+            tracking_number = delivery_info.tracking_number
+
+            # Try to mark existing package as delivered
+            try:
+                package = mark_package_delivered_by_tracking(
+                    db,
+                    current_user.id,
+                    tracking_number
+                )
+                if package:
+                    packages_delivered += 1
+                    print(f"Marked package {tracking_number} as delivered")
+            except Exception as e:
+                print(f"Failed to mark package as delivered: {e}")
+
         # Update scan status
+        status_message = f"Found {len(scan_result.tracking_numbers)} new, {len(scan_result.delivery_confirmations)} delivered"
         update_scan_status(
             db,
             credential,
             status="success",
-            message=f"Found {len(scan_result.tracking_numbers)} tracking numbers",
+            message=status_message,
             packages_found=packages_added,
         )
 
@@ -200,6 +228,8 @@ async def manual_scan(
             "emails_scanned": scan_result.emails_scanned,
             "tracking_numbers_found": len(scan_result.tracking_numbers),
             "packages_added": packages_added,
+            "delivery_confirmations_found": len(scan_result.delivery_confirmations),
+            "packages_marked_delivered": packages_delivered,
         }
 
     except HTTPException:

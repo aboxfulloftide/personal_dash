@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import api from '../../services/api';
+import PortfolioGraph from './PortfolioGraph';
 
 // Minimum refresh intervals per provider (in seconds) to avoid rate limits
 // With database caching, we can use 20-minute intervals to reduce API calls
@@ -24,9 +25,10 @@ function formatPercent(value) {
   return `${sign}${value.toFixed(2)}%`;
 }
 
-function StockRow({ symbol, shares, price, changePercent, onRemove }) {
+function StockRow({ symbol, shares, price, changePercent, type, onRemove }) {
   const total = price !== null ? price * shares : null;
   const isPositive = changePercent !== null && changePercent >= 0;
+  const isPortfolio = type === 'portfolio';
 
   return (
     <div className="flex items-center justify-between py-1.5 border-b border-gray-100 dark:border-gray-700 last:border-0">
@@ -38,6 +40,12 @@ function StockRow({ symbol, shares, price, changePercent, onRemove }) {
         >
           ×
         </button>
+        <span
+          className="text-xs"
+          title={isPortfolio ? 'Portfolio' : 'Watchlist'}
+        >
+          {isPortfolio ? '💼' : '👁️'}
+        </span>
         <span className="font-medium text-gray-800 dark:text-gray-200 text-sm">
           {symbol}
         </span>
@@ -49,12 +57,20 @@ function StockRow({ symbol, shares, price, changePercent, onRemove }) {
         <span className={`w-14 text-right ${isPositive ? 'text-green-600' : 'text-red-500'}`}>
           {formatPercent(changePercent)}
         </span>
-        <span className="text-gray-500 dark:text-gray-400 w-8 text-right">
-          {shares}×
-        </span>
-        <span className="font-medium text-gray-800 dark:text-gray-200 w-20 text-right">
-          {formatCurrency(total)}
-        </span>
+        {isPortfolio ? (
+          <>
+            <span className="text-gray-500 dark:text-gray-400 w-8 text-right">
+              {shares}×
+            </span>
+            <span className="font-medium text-gray-800 dark:text-gray-200 w-20 text-right">
+              {formatCurrency(total)}
+            </span>
+          </>
+        ) : (
+          <span className="text-gray-400 dark:text-gray-500 text-xs italic w-28 text-right">
+            watching
+          </span>
+        )}
       </div>
     </div>
   );
@@ -63,15 +79,23 @@ function StockRow({ symbol, shares, price, changePercent, onRemove }) {
 function AddHoldingModal({ isOpen, onClose, onAdd }) {
   const [symbol, setSymbol] = useState('');
   const [shares, setShares] = useState('');
+  const [type, setType] = useState('portfolio');
 
   if (!isOpen) return null;
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    if (!symbol.trim() || !shares) return;
-    onAdd({ symbol: symbol.trim().toUpperCase(), shares: parseFloat(shares) });
+    if (!symbol.trim()) return;
+    if (type === 'portfolio' && !shares) return;
+
+    onAdd({
+      symbol: symbol.trim().toUpperCase(),
+      shares: type === 'portfolio' ? parseFloat(shares) : 0,
+      type: type
+    });
     setSymbol('');
     setShares('');
+    setType('portfolio');
     onClose();
   };
 
@@ -81,6 +105,33 @@ function AddHoldingModal({ isOpen, onClose, onAdd }) {
       <div className="relative bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-xs w-full mx-4 p-4">
         <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-3">Add Stock</h3>
         <form onSubmit={handleSubmit} className="space-y-3">
+          <div>
+            <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Type</label>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setType('portfolio')}
+                className={`flex-1 px-3 py-2 rounded text-sm transition-colors ${
+                  type === 'portfolio'
+                    ? 'bg-blue-600 text-white'
+                    : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300'
+                }`}
+              >
+                💼 Portfolio
+              </button>
+              <button
+                type="button"
+                onClick={() => setType('watchlist')}
+                className={`flex-1 px-3 py-2 rounded text-sm transition-colors ${
+                  type === 'watchlist'
+                    ? 'bg-blue-600 text-white'
+                    : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300'
+                }`}
+              >
+                👁️ Watchlist
+              </button>
+            </div>
+          </div>
           <div>
             <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Symbol</label>
             <input
@@ -92,19 +143,21 @@ function AddHoldingModal({ isOpen, onClose, onAdd }) {
               required
             />
           </div>
-          <div>
-            <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Shares</label>
-            <input
-              type="number"
-              value={shares}
-              onChange={(e) => setShares(e.target.value)}
-              placeholder="10"
-              step="any"
-              min="0"
-              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm"
-              required
-            />
-          </div>
+          {type === 'portfolio' && (
+            <div>
+              <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Shares</label>
+              <input
+                type="number"
+                value={shares}
+                onChange={(e) => setShares(e.target.value)}
+                placeholder="10"
+                step="any"
+                min="0"
+                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm"
+                required
+              />
+            </div>
+          )}
           <div className="flex justify-end gap-2 pt-2">
             <button type="button" onClick={onClose} className="px-3 py-1.5 text-gray-600 dark:text-gray-400 text-sm">
               Cancel
@@ -134,8 +187,24 @@ export default function StockTickerWidget({ config, onConfigChange }) {
   const [error, setError] = useState(null);
   const [showAddModal, setShowAddModal] = useState(false);
   const [lastUpdated, setLastUpdated] = useState(null);
+  const [showGraph, setShowGraph] = useState(false);
+  const [graphData, setGraphData] = useState(null);
+  const [graphLoading, setGraphLoading] = useState(false);
+  const [graphError, setGraphError] = useState(null);
 
   const holdings = config.holdings || [];
+
+  // One-time migration: Add type field to existing holdings
+  useEffect(() => {
+    const needsMigration = holdings.some(h => !h.type);
+    if (needsMigration) {
+      const migratedHoldings = holdings.map(h => ({
+        ...h,
+        type: h.type || 'portfolio'
+      }));
+      onConfigChange?.({ ...config, holdings: migratedHoldings });
+    }
+  }, []); // Run once on mount
 
   const fetchQuotes = async () => {
     if (holdings.length === 0) return;
@@ -191,7 +260,38 @@ export default function StockTickerWidget({ config, onConfigChange }) {
     onConfigChange?.({ ...config, holdings: newHoldings });
   };
 
-  const totalValue = holdings.reduce((sum, h) => {
+  const fetchPortfolioHistory = async () => {
+    const portfolioHoldings = holdings.filter(h => (h.type || 'portfolio') === 'portfolio');
+    if (portfolioHoldings.length === 0) return;
+
+    setGraphLoading(true);
+    setGraphError(null);
+
+    try {
+      const params = {
+        holdings: JSON.stringify(portfolioHoldings),
+        days: 90,
+      };
+      const resp = await api.get('/finance/stocks/portfolio-history', { params });
+      setGraphData(resp.data);
+    } catch (err) {
+      setGraphError(err.response?.data?.detail || 'Failed to load portfolio history');
+    } finally {
+      setGraphLoading(false);
+    }
+  };
+
+  // Lazy load graph data when expanded
+  useEffect(() => {
+    if (showGraph && !graphData) {
+      fetchPortfolioHistory();
+    }
+  }, [showGraph]);
+
+  const portfolioHoldings = holdings.filter(h => (h.type || 'portfolio') === 'portfolio');
+  const watchlistHoldings = holdings.filter(h => h.type === 'watchlist');
+
+  const totalValue = portfolioHoldings.reduce((sum, h) => {
     const quote = quotes[h.symbol];
     if (quote?.price) {
       return sum + quote.price * h.shares;
@@ -226,7 +326,13 @@ export default function StockTickerWidget({ config, onConfigChange }) {
       <div className="flex items-center justify-between mb-2">
         <div className="flex flex-col">
           <span className="text-xs text-gray-500 dark:text-gray-400">
-            {loading ? 'Updating...' : error ? 'Error' : `${holdings.length} stocks`}
+            {loading ? 'Updating...' : error ? 'Error' : (
+              <>
+                {portfolioHoldings.length > 0 && `💼 ${portfolioHoldings.length}`}
+                {portfolioHoldings.length > 0 && watchlistHoldings.length > 0 && ' • '}
+                {watchlistHoldings.length > 0 && `👁️ ${watchlistHoldings.length}`}
+              </>
+            )}
           </span>
           {lastUpdated && !loading && (
             <span className="text-xs text-gray-400 dark:text-gray-500">
@@ -256,20 +362,81 @@ export default function StockTickerWidget({ config, onConfigChange }) {
               shares={holding.shares}
               price={quote.price}
               changePercent={quote.change_percent}
+              type={holding.type || 'portfolio'}
               onRemove={() => handleRemoveHolding(index)}
             />
           );
         })}
       </div>
 
-      <div className="pt-2 mt-2 border-t border-gray-200 dark:border-gray-700">
-        <div className="flex items-center justify-between">
-          <span className="text-xs text-gray-500 dark:text-gray-400">Total Value</span>
-          <span className="font-semibold text-gray-800 dark:text-gray-200">
-            {formatCurrency(totalValue)}
-          </span>
+      {/* Portfolio Graph Section */}
+      {portfolioHoldings.length > 0 && (
+        <div className="border-t border-gray-200 dark:border-gray-700">
+          {!showGraph ? (
+            <button
+              onClick={() => setShowGraph(true)}
+              className="w-full px-2 py-2 text-xs text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors flex items-center justify-between"
+            >
+              <span>📈 Show Portfolio Graph</span>
+              <span>▼</span>
+            </button>
+          ) : (
+            <div className="px-2 py-2">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs font-medium text-gray-700 dark:text-gray-300">Portfolio History (90 days)</span>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={fetchPortfolioHistory}
+                    className="text-xs text-blue-600 hover:text-blue-700 dark:text-blue-400"
+                    disabled={graphLoading}
+                  >
+                    {graphLoading ? '...' : '↻ Refresh'}
+                  </button>
+                  <button
+                    onClick={() => setShowGraph(false)}
+                    className="text-xs text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
+                  >
+                    ▲ Hide
+                  </button>
+                </div>
+              </div>
+
+              {graphLoading && !graphData && (
+                <div className="flex items-center justify-center h-48 bg-gray-100 dark:bg-gray-700 rounded">
+                  <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+                </div>
+              )}
+
+              {graphError && (
+                <div className="flex flex-col items-center justify-center h-48 bg-gray-100 dark:bg-gray-700 rounded text-xs text-red-500">
+                  <p className="mb-2">{graphError}</p>
+                  <button
+                    onClick={fetchPortfolioHistory}
+                    className="px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700"
+                  >
+                    Retry
+                  </button>
+                </div>
+              )}
+
+              {!graphLoading && !graphError && graphData && (
+                <PortfolioGraph data={graphData} currency="USD" />
+              )}
+            </div>
+          )}
         </div>
-      </div>
+      )}
+
+      {portfolioHoldings.length > 0 && (
+        <div className="pt-2 mt-2 border-t border-gray-200 dark:border-gray-700">
+          <div className="flex items-center justify-between">
+            <span className="text-xs text-gray-500 dark:text-gray-400">💼 Portfolio Value</span>
+            <span className="font-semibold text-gray-800 dark:text-gray-200">
+              {formatCurrency(totalValue)}
+            </span>
+          </div>
+        </div>
+      )}
 
       <AddHoldingModal
         isOpen={showAddModal}

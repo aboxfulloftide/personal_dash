@@ -35,8 +35,8 @@ def authenticate_user(db: Session, email: str, password: str) -> User | None:
     """Authenticate a user by email and password."""
     user = get_user_by_email(db, email)
     if not user:
-        # Run password verify anyway to prevent timing attacks
-        verify_password(password, "$2b$12$dummyhashtopreventtimingattacks")
+        # Run password verify anyway to prevent timing attacks (using valid dummy hash)
+        verify_password(password, "$2b$12$U6lbIil8ilAxCjNYG3XHYuRcAZGm5AXfZgSOsZgsebSTbob4EA.Sm")
         return None
     if not verify_password(password, user.password_hash):
         return None

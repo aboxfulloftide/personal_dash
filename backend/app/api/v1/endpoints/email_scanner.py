@@ -69,6 +69,242 @@ TRACKING_PATTERNS = {
 }
 
 
+def extract_order_numbers(text: str) -> list[str]:
+    """
+    Extract order numbers from text.
+    Returns list of order numbers (e.g., "ORDER #3411107", "#12345", "Order: 67890")
+    """
+    found = []
+    seen = set()
+
+    # Order number patterns
+    order_patterns = [
+        r'ORDER\s*#\s*([A-Z0-9\-]+)',           # ORDER #3411107, ORDER#123
+        r'ORDER\s*:\s*([A-Z0-9\-]+)',           # Order: 3411107
+        r'ORDER\s+NUMBER\s*:\s*([A-Z0-9\-]+)', # Order Number: 123
+        r'ORDER\s+ID\s*:\s*([A-Z0-9\-]+)',     # Order ID: 123
+        r'ORDER\s+([A-Z0-9\-]{6,})',           # Order 123456 (at least 6 chars)
+        r'#([0-9]{6,})',                        # #123456 (at least 6 digits)
+    ]
+
+    text_upper = text.upper()
+
+    for pattern in order_patterns:
+        matches = re.finditer(pattern, text_upper)
+        for match in matches:
+            order_num = match.group(1).strip()
+            # Remove common separators
+            order_num_clean = order_num.replace(' ', '').replace('-', '')
+
+            # Only accept if it's at least 4 characters and not already seen
+            if len(order_num_clean) >= 4 and order_num not in seen:
+                seen.add(order_num)
+                # Keep original format with separators
+                found.append(order_num)
+
+    return found
+
+
+def is_digital_order(subject: str, body: str, sender: str = '') -> bool:
+    """
+    Determine if an order is digital/software only (no physical shipment).
+    Returns True if order is for digital goods that don't need tracking.
+    """
+    text_to_check = f"{subject} {body} {sender}".lower()
+
+    # Digital order indicators
+    digital_patterns = [
+        # Explicit digital indicators
+        'digital download',
+        'download now',
+        'download available',
+        'instant download',
+        'digital delivery',
+        'digital code',
+        'digital copy',
+        'digital version',
+        'digital purchase',
+        'digital game',
+        'digital key',
+        'activation key',
+        'product key',
+        'license key',
+        'redeem code',
+        'steam key',
+        'epic games',
+        'gog.com',
+        'origin key',
+        'battle.net',
+        'playstation store',
+        'xbox store',
+        'nintendo eshop',
+        'ebook',
+        'e-book',
+        'kindle edition',
+        'audiobook',
+        'digital magazine',
+        'software license',
+        'subscription activated',
+        'membership activated',
+        'virtual currency',
+        'in-game item',
+        'dlc',
+        'downloadable content',
+        'gift card',
+        'egift card',
+        'digital gift',
+        # Platform-specific
+        'steam library',
+        'epic library',
+        'gog library',
+        'origin library',
+        'ubisoft connect',
+        'available in your library',
+        'added to your account',
+        'ready to play',
+        'start playing now',
+        # Software/SaaS
+        'software download',
+        'license activated',
+        'subscription confirmed',
+        'access granted',
+    ]
+
+    # Check if any digital pattern matches
+    is_digital = any(pattern in text_to_check for pattern in digital_patterns)
+
+    # Additional check: sender from known digital platforms
+    digital_senders = [
+        'steam',
+        'epicgames',
+        'gog.com',
+        'origin',
+        'ubisoft',
+        'battle.net',
+        'playstation',
+        'xbox',
+        'nintendo',
+        'kindle',
+        'audible',
+        'apple.com',  # App Store, iTunes
+        'google.com',  # Play Store
+    ]
+
+    sender_is_digital = any(platform in sender.lower() for platform in digital_senders)
+
+    return is_digital or sender_is_digital
+
+
+def is_shipping_notification(subject: str, body: str) -> bool:
+    """
+    Determine if an email is a shipping notification (order on the way).
+    Returns True if email indicates an order is being shipped or on the way.
+    """
+    text_to_check = f"{subject} {body}".lower()
+
+    # Shipping indication patterns
+    shipping_patterns = [
+        'shipped',
+        'on the way',
+        'on its way',
+        'order is shipping',
+        'your order has shipped',
+        'preparing to ship',
+        'ready to ship',
+        'package is on the way',
+        'order is being prepared',
+        'dispatched',
+        'sent out',
+        'in transit',
+        'out for delivery',
+        'heading your way',
+        'being shipped',
+        'has been shipped',
+    ]
+
+    # Check if any shipping pattern matches
+    return any(pattern in text_to_check for pattern in shipping_patterns)
+
+
+def extract_order_url(text: str, sender: str = '') -> Optional[str]:
+    """
+    Extract order/tracking URL from email body or subject.
+    Prioritizes URLs that look like order tracking pages.
+    Returns the first valid tracking/order URL found.
+    """
+    if not text:
+        return None
+
+    # Common order tracking URL patterns (order matters - most specific first)
+    url_patterns = [
+        # Specific retailers (high priority)
+        r'https?://(?:www\.)?limitedrungames\.com/[^\s<>"]+',
+        r'https?://(?:www\.)?shopify\.com/[^\s<>"]+(?:order|track)[^\s<>"]*',
+        r'https?://(?:www\.)?etsy\.com/[^\s<>"]+(?:order|track|receipt)[^\s<>"]*',
+        r'https?://(?:www\.)?kickstarter\.com/[^\s<>"]+(?:order|backer|track)[^\s<>"]*',
+        r'https?://(?:www\.)?backerkit\.com/[^\s<>"]+',
+
+        # Generic order/tracking keywords in URL
+        r'https?://[^\s<>"]+/(?:order|orders|track|tracking|shipment|shipping|delivery|status)[^\s<>"]*',
+        r'https?://[^\s<>"]+[?&](?:order|track|shipment)[^\s<>"]*',
+
+        # URL after tracking/order keywords in text
+        r'(?:track|view|check|see)\s+(?:your\s+)?(?:order|shipment|package)[^\n]*?(https?://[^\s<>"]+)',
+        r'(?:order|shipment|tracking)\s+(?:status|details|link)[^\n]*?(https?://[^\s<>"]+)',
+
+        # Click here / View order links
+        r'(?:click here|view order|track package)[^\n]*?(https?://[^\s<>"]+)',
+
+        # Any URL in email body (last resort - catches all URLs)
+        r'https?://[^\s<>"]+',
+    ]
+
+    # Keep track of found URLs to avoid duplicates
+    seen_domains = set()
+
+    for pattern in url_patterns:
+        matches = re.finditer(pattern, text, re.IGNORECASE)
+        for match in matches:
+            # Extract URL from match
+            url = match.group(0) if len(match.groups()) == 0 else match.group(1)
+
+            # Clean up trailing punctuation and HTML artifacts
+            url = url.rstrip('.,;:)>]')
+            url = url.split('<')[0]  # Remove any HTML tags
+
+            # Make sure it's a valid URL
+            if not url.startswith('http'):
+                continue
+
+            # Extract domain for deduplication
+            try:
+                from urllib.parse import urlparse
+                domain = urlparse(url).netloc
+            except:
+                domain = url
+
+            # Skip if we've already found a URL from this domain
+            if domain in seen_domains:
+                continue
+
+            # Skip common non-tracking URLs
+            skip_domains = [
+                'unsubscribe', 'preferences', 'facebook.com', 'twitter.com',
+                'instagram.com', 'linkedin.com', 'youtube.com', 'help.',
+                'support.', 'privacy', 'terms', 'docs.google.com',
+                'mailto:', 'tel:', 'javascript:'
+            ]
+
+            if any(skip in url.lower() for skip in skip_domains):
+                continue
+
+            # This looks like a valid tracking/order URL
+            seen_domains.add(domain)
+            return url
+
+    return None
+
+
 def extract_tracking_numbers(text: str) -> list[tuple[str, str]]:
     """Extract tracking numbers from text. Returns list of (number, carrier) tuples."""
     found = []
@@ -370,6 +606,10 @@ async def scan_imap_email(
                         # Try to extract tracking URL from email body
                         tracking_url = extract_tracking_url(body, carrier)
 
+                        # If carrier-specific URL not found, try generic order URL extraction
+                        if not tracking_url:
+                            tracking_url = extract_order_url(text_to_search, sender)
+
                         if is_delivered:
                             # Add to delivery confirmations
                             delivery_confirmations.append(DeliveryConfirmation(
@@ -394,6 +634,50 @@ async def scan_imap_email(
                                 email_body_snippet=body[:1000],
                                 tracking_url=tracking_url,
                             ))
+
+                    # NEW: Handle shipping notifications without tracking numbers
+                    # If no tracking numbers found BUT email indicates shipping, use order number
+                    if not found and not is_delivered:
+                        # Check if this is a digital/software order (should be ignored)
+                        is_digital = is_digital_order(subject, body, sender)
+
+                        if is_digital:
+                            print(f"DEBUG: Skipping digital order (no physical shipment)")
+                            print(f"  Sender: {sender}")
+                            print(f"  Subject: {subject[:100]}")
+                            # Skip digital orders - they don't need package tracking
+                            continue
+
+                        is_shipping = is_shipping_notification(subject, body)
+
+                        if is_shipping:
+                            # Try to extract order numbers
+                            order_numbers = extract_order_numbers(text_to_search)
+
+                            # Try to extract order URL
+                            order_url = extract_order_url(text_to_search, sender)
+
+                            if order_numbers:
+                                # Use first order number found
+                                order_num = order_numbers[0]
+
+                                print(f"DEBUG: Shipping notification without tracking number")
+                                print(f"  Sender: {sender}")
+                                print(f"  Subject: {subject}")
+                                print(f"  Order number: {order_num}")
+                                print(f"  Order URL: {order_url}")
+
+                                # Add as a new shipment with 'order' carrier
+                                tracking_numbers.append(TrackingNumber(
+                                    tracking_number=f"ORDER #{order_num}",
+                                    carrier='other',  # Generic carrier for order-only shipments
+                                    found_in_subject=subject[:100],
+                                    found_in_email=sender,
+                                    found_date=datetime.now().isoformat(),
+                                    email_sender=sender,
+                                    email_body_snippet=body[:1000],
+                                    tracking_url=order_url,  # Link to order page
+                                ))
 
     except HTTPException:
         raise
