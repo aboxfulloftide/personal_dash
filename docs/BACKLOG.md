@@ -8,7 +8,7 @@
 
 ### High Priority (Do Next)
 1. **Network Status Widget Phase 2** - Builds on completed Phase 1, adds valuable packet loss and uptime tracking
-2. **Stock/Crypto: Portfolio Value Graph** - Now unblocked with database caching complete
+2. ~~**Stock/Crypto: Portfolio Value Graph**~~ ✅ **COMPLETED** (2026-02-13)
 
 ### Medium Priority (Soon)
 3. ~~**Package Tracker: Auto-remove Delivered**~~ ✅ **COMPLETED**
@@ -98,50 +98,71 @@ Implemented automatic detection of delivery confirmations and removal of deliver
 
 ## Stock Ticker & Crypto Widgets
 
-### Enhancements
+### Completed
 
-#### Portfolio Value Graph
-**Status:** Not Started
-**Priority:** Medium
+#### Portfolio Value Graph ✓
+**Completed:** 2026-02-13
 **Description:**
-Add a graph to Stock and Crypto widgets showing total portfolio value over time.
+Added portfolio value graphs to Stock and Crypto widgets showing total portfolio value over time.
 
-**Requirements:**
-- Track and display total portfolio value (sum of all holdings) over time
-- Graph starts from the first day we have stored data
-- **Display Mode:**
-  - First 30 days: Daily graph (one data point per day)
-  - After 30 days: Weekly graph (one data point per week)
-- Shows historical performance and trends
+**Implemented Features:**
+- ✅ Historical portfolio value calculation using existing price data
+- ✅ Two new API endpoints:
+  - `GET /api/v1/finance/stocks/portfolio-history`
+  - `GET /api/v1/finance/crypto/portfolio-history`
+- ✅ Reusable PortfolioGraph component (Recharts-based)
+- ✅ Display modes:
+  - Daily data points for ≤30 days
+  - Weekly aggregation for >30 days
+- ✅ Summary statistics:
+  - Current portfolio value
+  - Starting value
+  - Total gain/loss percentage
+- ✅ Visual features:
+  - Color-coded line (green for gains, red for losses)
+  - Formatted currency display
+  - Tooltips with date and value
+  - Responsive container (200px height)
+- ✅ Expandable section (collapsed by default)
+- ✅ Lazy loading (only fetches when expanded)
+- ✅ Manual refresh button
+- ✅ Error handling and loading states
+
+**Portfolio vs Watchlist Enhancement:**
+- ✅ Added holding type field: "portfolio" or "watchlist"
+- ✅ Portfolio holdings (💼) - owned stocks/crypto, included in calculations
+- ✅ Watchlist items (👁️) - price tracking only, excluded from calculations
+- ✅ Type selection in Add modal
+- ✅ Visual indicators per holding
+- ✅ Automatic migration of existing holdings to "portfolio" type
+- ✅ Separate counts displayed in header
 
 **Technical Implementation:**
-- Leverage the database cache tables from the caching enhancement above
-- Calculate daily total value: `SUM(quantity * price)` for all holdings
-- Store daily portfolio snapshots:
-  - Table: `portfolio_history` (user_id, date, total_value, widget_type)
-  - One record per day per widget type (stock/crypto)
-- Frontend graph component (use Chart.js or Recharts):
-  - Query last 30 days for daily view
-  - Query all data grouped by week for weekly view
-  - Auto-switch between daily/weekly based on data age
-- Add toggle or tab in widget to show/hide graph
+- Backend:
+  - New schemas: `PortfolioDataPoint`, `PortfolioHistoryResponse`
+  - CRUD function: `calculate_portfolio_history()` in `app/crud/finance.py`
+  - Uses existing `stock_quotes` and `crypto_prices` tables
+  - Forward-fill logic for missing data
+  - Percentage change calculations from starting value
+- Frontend:
+  - Component: `PortfolioGraph.jsx`
+  - Integrated into `StockTickerWidget.jsx`
+  - Integrated into `CryptoWidget.jsx`
+  - Uses Recharts library (already installed)
+  - Follows WeatherWidget expandable pattern
 
-**UI/UX Notes:**
-- Graph should be collapsible/expandable to save space
-- Show current value vs. first recorded value (gain/loss %)
-- Color code: green for gains, red for losses
-- Tooltip on hover showing exact date and value
+**Known Issues:**
+- Graph may show "no change" if holdings have different data collection start times
+- Only calculates portfolio value for dates where ALL holdings have price data
+- Debug logging available for troubleshooting
 
-**Dependencies:**
-- Requires "Database Caching" enhancement to be implemented first
-- Need to install chart library (Chart.js or Recharts)
-
-**Related Files:**
-- `backend/app/api/v1/endpoints/stocks.py`
-- `backend/app/api/v1/endpoints/crypto.py`
-- `backend/app/models/` (portfolio_history model)
-- `frontend/src/components/widgets/StockTickerWidget.jsx`
-- `frontend/src/components/widgets/CryptoWidget.jsx`
+**Files Modified:**
+- `backend/app/schemas/finance.py` - NEW
+- `backend/app/crud/finance.py` - Added portfolio calculation
+- `backend/app/api/v1/endpoints/finance.py` - Added 2 endpoints
+- `frontend/src/components/widgets/PortfolioGraph.jsx` - NEW
+- `frontend/src/components/widgets/StockTickerWidget.jsx` - Graph integration + type field
+- `frontend/src/components/widgets/CryptoWidget.jsx` - Graph integration + type field
 
 ---
 
@@ -447,72 +468,67 @@ Widget to monitor internet connection status and run network speed tests.
 
 ## Calendar Widget
 
-### Enhancements
+### Completed
 
-#### Smart Event Display with Progressive Fallback
-**Status:** Not Started
+#### Smart Event Display with Progressive Fallback ✓
+**Completed:** 2026-02-13
 **Priority:** Medium
-**Estimated Effort:** ~3-4 hours
+**Actual Effort:** ~3 hours
 **Description:**
-Implement intelligent event display logic that adapts based on what events are available, preventing empty calendar displays.
+Implemented intelligent event display logic that adapts based on what events are available, preventing empty calendar displays.
 
-**Requirements:**
-- **Display Priority Logic:**
-  1. **If events exist today:** Show today's events (default behavior)
-  2. **If no events today:** Automatically show this week's events
-  3. **If no events this week:** Automatically show this month's events
-  4. **If no events this month:** Show "No upcoming events" message
+**Implemented Features:**
+- ✅ **Progressive Fallback Logic:**
+  - Auto-selects "Today" if events exist today
+  - Falls back to "Week" if no events today but events this week
+  - Falls back to "Month" if no events this week but events this month
+  - Shows "Today" with empty state if no events at all
 
-- **Visual Indicators:**
-  - Display current view mode: "Today", "This Week", or "This Month"
-  - Show date range being displayed (e.g., "Feb 12 - Feb 18")
-  - Highlight which fallback level is active
-  - Option to manually toggle between views
+- ✅ **Visual Indicators:**
+  - Event counts displayed below each tab (Today/Week/Month)
+  - Smart View indicator shows auto-selected view and reason
+  - Blue info box: "Smart View: Showing This Week (5 events)"
+  - Clear visual feedback on which view is active
 
-- **Event Display:**
-  - Today view: Show all events for current day with times
-  - Week view: Group events by day, show 7 days starting from today
-  - Month view: Calendar grid or list view of upcoming events
+- ✅ **Manual Override Support:**
+  - User can click any tab to override auto-selection
+  - Manual selection persists until month navigation
+  - Smart View indicator disappears when manually overridden
+
+- ✅ **Performance Optimizations:**
+  - Single API call per load (fetches month, filters client-side)
+  - 10-minute cache for fast reloads
+  - Instant view switching (no re-fetch)
+  - O(n) event counting where n < 100 typically
 
 **Technical Implementation:**
-- Backend: Update calendar endpoint with query parameters
-  - Add `view` parameter: "today", "week", "month"
-  - Add `auto_fallback` parameter (default: true)
-  - Return events + metadata about which view was used
-  - Include event counts per view (e.g., "0 today, 3 this week")
-- Frontend: Implement fallback logic
-  - Fetch event counts for today/week/month
-  - Automatically select appropriate view based on data
-  - Display view selector/indicator
-  - Cache view preference per user
-- Google Calendar API: Query optimization
-  - Single API call to fetch month's events
-  - Frontend filters for today/week views
-  - Reduces API calls and improves performance
+- Backend (`calendar.py`):
+  - Added `auto_fallback` query parameter (default: true)
+  - Added event count metadata: `events_today_count`, `events_week_count`, `events_month_count`
+  - Added `auto_selected_view` field to response
+  - Helper functions: `calculate_date_ranges()`, `select_best_view()`, `count_events_in_range()`
+  - Fixed date range filtering bug (use `<` instead of `<=` for end boundary)
 
-**UI/UX Notes:**
-- Smooth transitions between view modes
-- Clear indication of which view is active
-- "No events" state should suggest adding events
-- Option to force specific view (user override)
-- Week view shows Mon-Sun or configurable start day
+- Frontend (`CalendarWidget.jsx`):
+  - Added `userOverrodeView` state tracking
+  - Updated ViewTabs to show event counts
+  - Auto-sync view with backend's selection
+  - Smart View indicator component
+  - Reset auto-fallback on month navigation
 
-**Benefits:**
-- Never shows empty calendar
-- User always sees relevant upcoming events
-- Reduces need for manual navigation
-- Better use of widget space
-- More informative at a glance
+**Bugs Fixed:**
+- ✅ Date range filtering now correctly excludes end boundary
+- ✅ Events on Feb 14 no longer appear in Feb 13's "today" view
+- ✅ Timezone handling uses local server time (not UTC)
 
-**Related Files:**
-- `backend/app/api/v1/endpoints/calendar.py` (or create if doesn't exist)
-- `frontend/src/components/widgets/CalendarWidget.jsx` (or create if doesn't exist)
-- Google Calendar API integration
+**Files Modified:**
+- `backend/app/api/v1/endpoints/calendar.py`
+- `frontend/src/components/widgets/CalendarWidget.jsx`
 
-**Dependencies:**
-- Calendar widget must be implemented first (if not already)
-- Google Calendar API integration
-- Authentication with Google OAuth
+**Documentation:**
+- `CALENDAR_SMART_VIEW_IMPLEMENTATION.md` - Complete implementation guide
+- `test_calendar_logic.py` - Unit tests for date logic
+- `test_calendar_smart_view.py` - Integration tests
 
 ---
 
@@ -701,6 +717,127 @@ Build the basic mechanism for widgets to alert and move to top. Per-widget trigg
 4. Page refresh with active alerts (state persistence)
 5. Alert triggered while user is editing layout
 6. Widget deleted while in alert mode
+
+---
+
+#### Smart Widget Refresh - Only Update Changed Data
+**Status:** Not Started
+**Priority:** Medium
+**Estimated Effort:** ~6-8 hours
+**Description:**
+Optimize widget refresh behavior to only re-render widgets when their data has actually changed, reducing screen flashing and blanking during background refreshes.
+
+**Current Behavior:**
+- Dashboard polls all widgets on a fixed interval (60 seconds for alerts)
+- All widgets refresh simultaneously even if data hasn't changed
+- Causes visual flashing/blanking as widgets re-render
+- Unnecessary re-renders impact performance and UX
+
+**Desired Behavior:**
+- Backend includes data hash or timestamp in API responses
+- Frontend compares new data with previous data
+- Only re-render widget if data has actually changed
+- Skip re-render if data is identical to previous fetch
+- Smooth, flash-free experience when data is static
+
+**Technical Implementation:**
+
+**Backend:**
+- Add `data_hash` or `last_modified` field to API responses
+- Calculate hash of response data (MD5/SHA1 of JSON)
+- OR: Use timestamp of when underlying data last changed
+- Include in response metadata:
+  ```json
+  {
+    "data": { /* widget data */ },
+    "meta": {
+      "hash": "abc123...",
+      "last_updated": "2026-02-13T12:34:56Z"
+    }
+  }
+  ```
+
+**Frontend:**
+- Store previous data hash per widget in `useWidgetData` hook
+- Compare new hash with previous on each fetch
+- Only update state if hash differs:
+  ```javascript
+  if (newHash !== previousHash) {
+    setData(newData);  // Trigger re-render
+  } else {
+    // Skip update, no re-render
+  }
+  ```
+- Update loading states intelligently:
+  - First load: Show loading spinner
+  - Background refresh: Silent (no loading state)
+  - Data changed: Update without flash
+
+**Alternative Implementation:**
+- Deep equality check instead of hash
+  ```javascript
+  import isEqual from 'lodash/isEqual';
+  if (!isEqual(newData, prevData)) {
+    setData(newData);
+  }
+  ```
+- Pro: No backend changes needed
+- Con: Performance cost of deep comparison (acceptable for small datasets)
+
+**Optimization Options:**
+1. **Per-widget hashing:** Each endpoint calculates its own hash
+2. **Client-side comparison:** Frontend does deep equality check
+3. **ETag headers:** Use HTTP ETag for cache validation (more complex)
+4. **Timestamp comparison:** Track `updated_at` in database for each data source
+
+**Benefits:**
+- ✅ Eliminates unnecessary re-renders
+- ✅ Reduces screen flashing/blanking
+- ✅ Smoother user experience
+- ✅ Better performance (fewer DOM updates)
+- ✅ Lower CPU usage
+- ✅ More responsive dashboard
+
+**Example Widgets That Benefit Most:**
+- **Weather:** Data updates every 15 min, polled every 60s
+- **Stocks/Crypto:** Prices cached 20 min, polled every 60s
+- **Server Monitor:** Metrics change slowly
+- **Calendar:** Events rarely change during the day
+- **News:** Headlines update hourly
+
+**Edge Cases to Handle:**
+- Widget settings changed (force refresh)
+- Manual refresh button clicked (force refresh)
+- Network errors (show error, don't blank widget)
+- First load vs background refresh (different UX)
+
+**Configuration:**
+- Per-widget setting: `smart_refresh` (default: true)
+- Global setting: `enable_smart_refresh` (default: true)
+- Debug mode: Log when refreshes are skipped
+
+**Related Files:**
+- `frontend/src/hooks/useWidgetData.js` - Main refresh logic
+- `frontend/src/hooks/useDashboard.js` - Dashboard-level polling
+- `backend/app/api/v1/endpoints/*.py` - Add hash/timestamp to responses
+- All widget components - Benefit from reduced re-renders
+
+**Dependencies:**
+- None (pure enhancement to existing system)
+
+**Testing Scenarios:**
+1. Data unchanged - verify no re-render
+2. Data changed - verify smooth update
+3. Network error - verify widget doesn't blank
+4. Manual refresh - verify force update works
+5. Settings changed - verify force update works
+6. Multiple widgets - verify independent refresh logic
+
+**Metrics to Track:**
+- Number of skipped refreshes (should be high)
+- Number of actual updates (should be low)
+- Time saved from avoided re-renders
+- User-reported reduction in flashing
 
 ---
 

@@ -91,6 +91,108 @@ personal-dash/
 
 ## Recent Enhancements
 
+### Calendar Widget - Smart Event Display (Completed - 2026-02-13)
+**Intelligent Auto-View Selection**
+- Progressive fallback logic: Today → Week → Month → empty state
+- Automatically selects the first view with events (no more hunting)
+- Event counts displayed in each tab (e.g., "Today: 3", "Week: 12")
+- Smart View indicator shows which view was auto-selected and why
+- Manual override support (user can click tabs, resets on month navigation)
+- Single API call optimization (fetches month, filters client-side)
+
+**Bug Fixes**
+- Fixed date range filtering to correctly exclude end boundary
+- Events on Feb 14 no longer appear in Feb 13's "today" view
+- Timezone handling now uses local server time (not UTC)
+
+**Technical Implementation:**
+- Backend: Added `auto_fallback`, event count metadata, smart selection logic
+- Frontend: Auto-sync view, event counts in tabs, Smart View indicator
+- Performance: 10-minute cache, instant view switching, O(n) counting
+
+**Files Modified:**
+- `backend/app/api/v1/endpoints/calendar.py` - Smart selection + date fix
+- `frontend/src/components/widgets/CalendarWidget.jsx` - Auto-view sync + UI
+
+**Documentation:**
+- `CALENDAR_SMART_VIEW_IMPLEMENTATION.md` - Complete implementation guide
+
+---
+
+### Stock/Crypto Portfolio Value Graph & Watchlist (Completed - 2026-02-13)
+**Portfolio Performance Visualization**
+- Added historical portfolio value graphs to Stock Ticker and Crypto widgets
+- 90-day portfolio history with automatic daily/weekly aggregation
+- Color-coded visualization: green for gains, red for losses
+- Summary stats: current value, starting value, gain/loss percentage
+- Expandable section with lazy loading (only fetches when opened)
+- Manual refresh button for on-demand updates
+
+**Portfolio vs Watchlist Tracking**
+- Holdings can now be marked as "Portfolio" (💼) or "Watchlist" (👁️)
+- Portfolio holdings: owned stocks/crypto included in value calculations
+- Watchlist items: price tracking only, excluded from calculations
+- Visual indicators and separate counts in widget header
+- Type selection in Add modal with toggle buttons
+- Automatic migration of existing holdings to "portfolio" type
+
+**Technical Details**
+- Backend: New API endpoints for portfolio history calculation
+- Frontend: Reusable PortfolioGraph component using Recharts
+- Uses existing historical price data (no new tables needed)
+- Forward-fill logic handles missing data points
+
+### Network Status Widget - Speed Tests (Completed - 2026-02-13)
+**Phase 3: Network Speed Tests**
+- On-demand bandwidth testing using speedtest-cli (download/upload speeds)
+- Rate limiting (15 minutes minimum between tests)
+- Historical tracking with visualization (24h/7d/30d views)
+- Speed test result card with server information
+- Dual-line chart (download=green, upload=blue)
+- Automatic cleanup of old test results (90 days retention)
+
+**Technical Implementation:**
+- Backend:
+  - `speed_test_results` database table with composite index
+  - Speed test utility wrapping speedtest-cli library
+  - 3 new API endpoints (run test, get history, get stats)
+  - CRUD operations with rate limiting check
+  - Daily cleanup scheduler job
+- Frontend:
+  - "Network Speed" section in NetworkStatusWidget
+  - Progress indicator during test (30-60s)
+  - Expandable history section with Recharts visualization
+  - Time range selector (24h/7d/30d)
+  - Rate limiting UI with error handling
+
+**Files Modified:**
+- `backend/requirements.txt` - Added speedtest-cli==2.1.3
+- `backend/app/models/network.py` - SpeedTestResult model
+- `backend/app/utils/speedtest_utils.py` - NEW FILE
+- `backend/app/crud/speedtest.py` - NEW FILE
+- `backend/app/schemas/network.py` - 5 new schemas
+- `backend/app/api/v1/endpoints/network.py` - 3 new endpoints
+- `backend/app/core/scheduler.py` - Cleanup task
+- `backend/alembic/versions/*_add_speed_test_results_table.py` - Migration
+- `frontend/src/components/widgets/NetworkStatusWidget.jsx` - Speed test UI
+
+---
+
+### Package Cleanup Scheduler Fix (Completed - 2026-02-13)
+**Improved Cleanup Timing**
+- Email scanner runs every 30 minutes (faster package detection and delivery marking)
+- Cleanup task runs every 30 minutes (removes delivered packages within 30 min of midnight)
+- Added immediate cleanup run on backend startup (catches packages from overnight)
+- Ensures delivered packages are removed promptly at midnight the next day
+
+**Files Modified:**
+- `backend/app/core/scheduler.py` - Set both tasks to 30-minute intervals
+- `backend/app/main.py` - Added startup cleanup task
+
+**Root Cause:** Original 6-hour interval meant packages could wait many hours after midnight before removal. 30-minute interval provides near-real-time cleanup and email scanning.
+
+---
+
 ### Dashboard UX Improvements (Completed - 2026-02-12)
 **Silent Background Refresh**
 - Background polling for alerts without loading states or flashing
@@ -175,10 +277,11 @@ personal-dash/
 1. ~~**News Headlines - Priority keywords with highlighting**~~ ✅
 2. ~~**Server Monitor - Track specific processes**~~ ✅
 3. ~~**Server Monitor - Monitor mounted drives**~~ ✅
-4. ~~**Network Speed & Connection Status widget**~~ ✅ (Phase 1: Ping monitoring)
+4. ~~**Network Status Widget**~~ ✅ (Phase 1: Ping monitoring, Phase 2: History/Uptime, Phase 3: Speed tests)
 5. ~~**Stock & Crypto - Database caching**~~ ✅
 6. ~~**Email Integration for Package Tracking**~~ ✅
 7. ~~**Widget Alert System**~~ ✅
+8. ~~**Stock & Crypto - Portfolio value graph**~~ ✅
 
 ### 🟢 Easy (2-5 hours)
 
@@ -193,17 +296,13 @@ personal-dash/
 3. **Fitness Stats widget** (~5-6 hours)
    - Body weight tracking with charts
 
-4. **Network Status - Speed tests** (~4-6 hours)
-   - Add download/upload speed tests (Phase 2 of Network Status widget)
-   - Historical speed tracking with graphs
-
-5. **Weather - Severe weather alerts** (~6-8 hours)
+4. **Weather - Severe weather alerts** (~6-8 hours)
    - Overlay alerts on radar map
 
-6. **Calendar - Smart event display** (~6-8 hours)
-   - Progressive fallback: current event → next event → today's events → week view
+5. ~~**Calendar - Smart event display**~~ ✅ **COMPLETED** (2026-02-13, ~3 hours)
+   - Progressive fallback: today → week → month with auto-selection
 
-7. **Weather - Moon phase tracker** (~5-6 hours)
+6. **Weather - Moon phase tracker** (~5-6 hours)
    - Display current moon phase with icon and illumination percentage
 
 ### 🔴 Complex (8-20+ hours)
