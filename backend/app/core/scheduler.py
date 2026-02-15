@@ -21,6 +21,35 @@ from app.crud.dashboard import trigger_widget_alert, acknowledge_widget_alert
 
 logger = logging.getLogger(__name__)
 
+
+def calculate_subject_similarity(subject1: str, subject2: str) -> float:
+    """
+    Calculate similarity between two email subjects using word overlap.
+    Returns a score between 0.0 (no similarity) and 1.0 (identical).
+    """
+    # Clean and normalize subjects
+    s1 = clean_email_subject(subject1).lower()
+    s2 = clean_email_subject(subject2).lower()
+
+    # Split into words and create sets
+    words1 = set(s1.split())
+    words2 = set(s2.split())
+
+    # Remove very common words that don't help with matching
+    common_words = {'the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'from'}
+    words1 = words1 - common_words
+    words2 = words2 - common_words
+
+    # Handle empty sets
+    if not words1 or not words2:
+        return 0.0
+
+    # Calculate Jaccard similarity (intersection over union)
+    intersection = len(words1 & words2)
+    union = len(words1 | words2)
+
+    return intersection / union if union > 0 else 0.0
+
 # Global scheduler instance
 scheduler = None
 
@@ -111,6 +140,58 @@ async def scan_user_email_task():
                                 existing_order.description = f"Auto: {cleaned_subject[:50]}"
                             db.commit()
                             continue
+
+                    # Check if this is an ORDER # and the real tracking number already exists
+                    # If so, skip creating the ORDER # duplicate (reverse of above case)
+                    if tracking_number.startswith("ORDER #") and tracking_normalized in existing_tracking_numbers:
+                        logger.info(f"Skipping ORDER # duplicate - real tracking number already exists: {tracking_normalized}")
+                        continue
+
+                    # THIRD LAYER: Check for similar subjects in recent packages (last 7 days)
+                    # This catches cases where duplicate emails come in with slightly different subjects
+                    # but no tracking/order numbers yet (e.g., "Order Placed" then "Shipped" emails)
+                    seven_days_ago = datetime.now() - timedelta(days=7)
+                    similar_found = False
+
+                    for existing_pkg in all_packages:
+                        # Only check recent packages from same user
+                        if existing_pkg.created_at < seven_days_ago:
+                            continue
+
+                        # Skip if already dismissed
+                        if existing_pkg.dismissed:
+                            continue
+
+                        # Calculate subject similarity
+                        if existing_pkg.email_subject and tracking_info.found_in_subject:
+                            similarity = calculate_subject_similarity(
+                                existing_pkg.email_subject,
+                                tracking_info.found_in_subject
+                            )
+
+                            # If subjects are very similar (>70% word overlap), consider it a duplicate
+                            if similarity > 0.7:
+                                logger.info(
+                                    f"Skipping likely duplicate based on subject similarity ({similarity:.0%}): "
+                                    f"New: '{tracking_info.found_in_subject[:60]}...' vs "
+                                    f"Existing #{existing_pkg.id}: '{existing_pkg.email_subject[:60]}...'"
+                                )
+
+                                # If the new email has better info (has tracking, old doesn't), update it
+                                if tracking_number and not tracking_number.startswith("ORDER #") and existing_pkg.tracking_number.startswith("ORDER #"):
+                                    logger.info(f"Updating package #{existing_pkg.id} with better tracking info: {tracking_number}")
+                                    existing_pkg.tracking_number = tracking_number
+                                    existing_pkg.carrier = tracking_info.carrier.lower()
+                                    if "shipped" in tracking_info.found_in_subject.lower():
+                                        cleaned_subject = clean_email_subject(tracking_info.found_in_subject)
+                                        existing_pkg.description = f"Auto: {cleaned_subject[:50]}"
+                                    db.commit()
+
+                                similar_found = True
+                                break
+
+                    if similar_found:
+                        continue
 
                     # Create new package
                     try:
@@ -287,6 +368,157 @@ def cleanup_old_speed_tests_task():
     logger.info("Cleanup old speed tests task completed")
 
 
+async def reminders_midnight_reset_task():
+    """
+    Background task that runs at midnight to:
+    1. Mark pending reminders from previous days as 'missed' (if carry_over=False)
+    2. Mark pending reminders from previous days as 'overdue' (if carry_over=True)
+    3. Generate new reminder instances for today based on active reminders
+
+    Runs every 30 minutes to catch midnight quickly (actual logic checks date).
+    """
+    logger.info("Starting reminders midnight reset task")
+
+    db = SessionLocal()
+    try:
+        from app.crud.reminder import mark_missed_reminders, mark_overdue_reminders, create_reminder_instance, check_instance_exists
+        from app.models.reminder import Reminder
+        from datetime import date, time, timedelta
+
+        # Mark missed and overdue reminders from previous days
+        missed_count = mark_missed_reminders(db)
+        overdue_count = mark_overdue_reminders(db)
+
+        if missed_count > 0 or overdue_count > 0:
+            logger.info(f"Marked {missed_count} missed and {overdue_count} overdue reminders")
+
+        # Generate new instances for today
+        today = date.today()
+        today_weekday = today.weekday()  # 0 = Monday, 6 = Sunday
+
+        # Get all active reminders
+        query = select(Reminder).where(
+            Reminder.is_active == True,
+            Reminder.start_date <= today
+        )
+        result = db.execute(query)
+        active_reminders = list(result.scalars().all())
+
+        logger.info(f"Checking {len(active_reminders)} active reminders for instance generation")
+
+        instances_created = 0
+        for reminder in active_reminders:
+            try:
+                from app.schemas.reminder import ReminderInstanceCreate
+
+                # Check recurrence type
+                if reminder.recurrence_type == "day_of_week":
+                    # Day-of-week based reminder
+                    if reminder.days_of_week:
+                        days = [int(d.strip()) for d in reminder.days_of_week.split(",")]
+                        if today_weekday in days:
+                            # Check if instance already exists
+                            if not check_instance_exists(db, reminder.id, today, reminder.reminder_time):
+                                instance_data = ReminderInstanceCreate(
+                                    reminder_id=reminder.id,
+                                    due_date=today,
+                                    due_time=reminder.reminder_time,
+                                    status="pending",
+                                    is_overdue=False,
+                                )
+                                create_reminder_instance(db, reminder.user_id, instance_data)
+                                instances_created += 1
+                                logger.info(f"Created instance for day-of-week reminder {reminder.id}: {reminder.title}")
+
+                elif reminder.recurrence_type == "interval":
+                    # Interval-based reminder
+                    if reminder.interval_unit == "hours":
+                        # Hourly reminders - create multiple instances for today
+                        hours_per_day = 24
+                        interval = reminder.interval_value
+                        instances_per_day = hours_per_day // interval
+
+                        for i in range(instances_per_day):
+                            hour = i * interval
+                            due_time = time(hour=hour, minute=0, second=0)
+
+                            if not check_instance_exists(db, reminder.id, today, due_time, i + 1):
+                                instance_data = ReminderInstanceCreate(
+                                    reminder_id=reminder.id,
+                                    due_date=today,
+                                    due_time=due_time,
+                                    instance_number=i + 1,
+                                    status="pending",
+                                    is_overdue=False,
+                                )
+                                create_reminder_instance(db, reminder.user_id, instance_data)
+                                instances_created += 1
+
+                    elif reminder.interval_unit == "days":
+                        # Daily interval (every N days)
+                        days_since_start = (today - reminder.start_date).days
+                        if days_since_start % reminder.interval_value == 0:
+                            if not check_instance_exists(db, reminder.id, today, reminder.reminder_time):
+                                instance_data = ReminderInstanceCreate(
+                                    reminder_id=reminder.id,
+                                    due_date=today,
+                                    due_time=reminder.reminder_time,
+                                    status="pending",
+                                    is_overdue=False,
+                                )
+                                create_reminder_instance(db, reminder.user_id, instance_data)
+                                instances_created += 1
+                                logger.info(f"Created instance for daily interval reminder {reminder.id}: {reminder.title}")
+
+                    elif reminder.interval_unit == "weeks":
+                        # Weekly interval (every N weeks)
+                        days_since_start = (today - reminder.start_date).days
+                        weeks_since_start = days_since_start // 7
+                        if weeks_since_start % reminder.interval_value == 0 and today.weekday() == reminder.start_date.weekday():
+                            if not check_instance_exists(db, reminder.id, today, reminder.reminder_time):
+                                instance_data = ReminderInstanceCreate(
+                                    reminder_id=reminder.id,
+                                    due_date=today,
+                                    due_time=reminder.reminder_time,
+                                    status="pending",
+                                    is_overdue=False,
+                                )
+                                create_reminder_instance(db, reminder.user_id, instance_data)
+                                instances_created += 1
+                                logger.info(f"Created instance for weekly interval reminder {reminder.id}: {reminder.title}")
+
+                    elif reminder.interval_unit == "months":
+                        # Monthly interval (every N months)
+                        months_since_start = (today.year - reminder.start_date.year) * 12 + (today.month - reminder.start_date.month)
+                        if months_since_start % reminder.interval_value == 0 and today.day == reminder.start_date.day:
+                            if not check_instance_exists(db, reminder.id, today, reminder.reminder_time):
+                                instance_data = ReminderInstanceCreate(
+                                    reminder_id=reminder.id,
+                                    due_date=today,
+                                    due_time=reminder.reminder_time,
+                                    status="pending",
+                                    is_overdue=False,
+                                )
+                                create_reminder_instance(db, reminder.user_id, instance_data)
+                                instances_created += 1
+                                logger.info(f"Created instance for monthly interval reminder {reminder.id}: {reminder.title}")
+
+            except Exception as e:
+                logger.error(f"Error processing reminder {reminder.id}: {e}")
+
+        if instances_created > 0:
+            logger.info(f"Created {instances_created} new reminder instances for today")
+        else:
+            logger.info("No new reminder instances created")
+
+    except Exception as e:
+        logger.error(f"Error in reminders midnight reset task: {e}")
+    finally:
+        db.close()
+
+    logger.info("Reminders midnight reset task completed")
+
+
 async def monitor_weather_alerts_task():
     """
     Background task to check for severe weather alerts and trigger widget alerts.
@@ -439,8 +671,17 @@ def start_scheduler():
         replace_existing=True,
     )
 
+    # Run reminders midnight reset every 30 minutes (catches midnight quickly)
+    scheduler.add_job(
+        reminders_midnight_reset_task,
+        trigger=IntervalTrigger(minutes=30),
+        id="reminders_midnight_reset",
+        name="Reset reminders at midnight and generate daily instances",
+        replace_existing=True,
+    )
+
     scheduler.start()
-    logger.info("Background scheduler started - email auto-scan, package cleanup, speed test cleanup, and weather alerts monitoring enabled")
+    logger.info("Background scheduler started - email auto-scan, package cleanup, speed test cleanup, weather alerts monitoring, and reminders enabled")
 
 
 def stop_scheduler():

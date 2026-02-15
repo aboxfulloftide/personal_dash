@@ -357,6 +357,50 @@ CREATE TABLE email_credentials (
 );
 ```
 
+### Reminders
+
+```sql
+CREATE TABLE reminders (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    user_id INT NOT NULL,
+    title VARCHAR(255) NOT NULL,
+    notes TEXT,
+
+    -- Recurrence settings
+    recurrence_type VARCHAR(20) NOT NULL,  -- 'interval', 'day_of_week'
+    interval_value INT,                    -- For interval: 4 (every 4 hours/days/etc)
+    interval_unit VARCHAR(20),             -- 'hours', 'days', 'weeks', 'months'
+    days_of_week VARCHAR(20),              -- For day_of_week: '0,1,2,3,4' (Mon-Fri)
+    reminder_time TIME,                    -- Time for the reminder
+
+    start_date DATE NOT NULL,
+    carry_over BOOLEAN DEFAULT TRUE,       -- Show next day if missed vs auto-dismiss
+    is_active BOOLEAN DEFAULT TRUE,
+
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    INDEX idx_user_active (user_id, is_active)
+);
+
+CREATE TABLE reminder_instances (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    reminder_id INT NOT NULL,
+    user_id INT NOT NULL,
+    due_date DATE NOT NULL,
+    due_time TIME,
+    instance_number INT,                   -- For hourly reminders (1, 2, 3, etc.)
+    status VARCHAR(20) DEFAULT 'pending',  -- 'pending', 'dismissed', 'missed'
+    dismissed_at TIMESTAMP,
+    is_overdue BOOLEAN DEFAULT FALSE,      -- Carried over from previous day
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (reminder_id) REFERENCES reminders(id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    INDEX idx_user_due_date_status (user_id, due_date, status),
+    INDEX idx_reminder_due (reminder_id, due_date)
+);
+```
+
 ### Network Monitoring
 
 ```sql
@@ -445,6 +489,7 @@ CREATE TABLE api_cache (
 | **Package Cleanup** | 30 minutes | Remove delivered packages at midnight next day |
 | **Speed Test Cleanup** | Daily | Delete speed test results older than 90 days |
 | **Weather Alerts Monitor** | 5 minutes | Check for severe weather and trigger widget alerts |
+| **Reminders Midnight Reset** | 30 minutes | Mark missed/overdue reminders, generate daily instances |
 
 ### Task Details
 
@@ -488,6 +533,7 @@ CREATE TABLE api_cache (
 | **News Headlines** | `news_headlines` | Lifestyle | 3×3 | RSS feeds, keyword filtering, NewsAPI support |
 | **Calendar** | `calendar` | Lifestyle | 3×3 | ICS/iCal events, smart view selection |
 | **Network Status** | `network_status` | Monitoring | 3×2 | Multi-site ping, speed tests, uptime tracking |
+| **Reminders** | `reminders` | Lifestyle | 3×3 | Recurring reminders, daily/weekly/interval schedules, carry-over |
 | **Portfolio Graph** | `portfolio_graph` | Finance | 3×3 | (Planned) Historical portfolio charts |
 
 ### Widget Alert System

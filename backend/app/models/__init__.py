@@ -7,6 +7,7 @@ from app.models.email_credential import EmailCredential
 from app.models.fitness import WeightEntry
 from app.models.cache import APICache
 from app.models.finance import StockQuote, CryptoPrice
+from app.models.reminder import Reminder, ReminderInstance
 
 __all__ = [
     "User",
@@ -27,4 +28,6 @@ __all__ = [
     "APICache",
     "StockQuote",
     "CryptoPrice",
+    "Reminder",
+    "ReminderInstance",
 ]

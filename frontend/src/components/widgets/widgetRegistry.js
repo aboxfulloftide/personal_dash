@@ -244,6 +244,21 @@ const widgetRegistry = {
       refresh_interval: { type: 'number', label: 'Refresh Interval (seconds)', default: 60, min: 30, max: 600, step: 30 },
     },
   },
+  reminders: {
+    component: () => import('./ReminderWidget'),
+    name: 'Reminders',
+    description: 'Recurring reminders with daily, weekly, or interval-based schedules',
+    category: 'lifestyle',
+    defaultSize: { w: 3, h: 3 },
+    minSize: { w: 2, h: 2 },
+    maxSize: { w: 4, h: 6 },
+    hasDataEndpoint: true,
+    configSchema: {
+      title: { type: 'text', label: 'Title', default: 'Reminders' },
+      show_dismissed: { type: 'toggle', label: 'Show Completed Reminders', default: false },
+      refresh_interval: { type: 'number', label: 'Refresh Interval (seconds)', default: 60, min: 30, max: 600, step: 30 },
+    },
+  },
 };
 
 const fallbackWidget = {

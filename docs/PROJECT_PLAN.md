@@ -88,10 +88,83 @@ personal-dash/
 - [x] 17. Network Status Widget (Ping monitoring with custom targets)
 - [x] 18. Widget Alert System (Priority notifications - see [WIDGET_ALERTS.md](WIDGET_ALERTS.md))
 - [x] 19. Email Integration for Package Tracking (IMAP auto-scan)
-- [ ] 20. Additional Widgets (Fitness, Smart Home, Picture Frame)
-- [ ] 21. Deployment & Documentation
+- [x] 20. Reminders Widget (Recurring reminders with flexible schedules)
+- [ ] 21. Additional Widgets (Fitness, Smart Home, Picture Frame)
+- [ ] 22. Deployment & Documentation
 
 ## Recent Enhancements
+
+### Reminders Widget (Completed - 2026-02-14)
+**Flexible Recurring Reminders with Smart Carry-Over**
+- Recurring reminders with multiple schedule types:
+  - **Day-of-week:** Specific days (e.g., Mon, Wed, Fri at 9am)
+  - **Hourly:** Every N hours (e.g., every 4 hours starting at 8am)
+  - **Daily:** Every N days (e.g., every 3 days)
+  - **Weekly:** Every N weeks (e.g., every 2 weeks)
+  - **Monthly:** Every N months (e.g., every month on the 15th)
+- Smart carry-over: Choose to show missed reminders next day or auto-dismiss
+- One-click dismiss with checkmark button
+- Overdue highlighting (red background) for carried-over reminders
+- Real-time updates (refreshes every 60 seconds)
+- Optional notes field for additional context
+- Instance numbering for hourly reminders (e.g., #1, #2, #3)
+
+**Technical Implementation:**
+- Backend:
+  - `reminders` table - Stores recurring reminder configurations
+  - `reminder_instances` table - Stores individual occurrences per date
+  - Complete CRUD API at `/api/v1/reminders/`
+  - Background task (every 30 minutes) for:
+    - Marking missed reminders (carry_over=False)
+    - Marking overdue reminders (carry_over=True)
+    - Generating new instances based on recurrence rules
+  - Efficient indexing: `idx_user_due_date_status`, `idx_reminder_due`
+- Frontend:
+  - `ReminderWidget.jsx` - Main widget with today's reminders
+  - `ReminderModal.jsx` - Full-featured form for creating reminders
+  - Day-of-week selector, interval picker, time picker
+  - Empty state with helpful prompt
+  - Dismissed reminders shown with reduced opacity
+
+**Files Created:**
+- `backend/app/models/reminder.py` - Reminder and ReminderInstance models
+- `backend/app/schemas/reminder.py` - Pydantic schemas for API
+- `backend/app/crud/reminder.py` - CRUD operations
+- `backend/app/api/v1/endpoints/reminders.py` - REST API endpoints
+- `backend/alembic/versions/d19bfb2fd00b_add_reminders_tables.py` - Migration
+- `frontend/src/components/widgets/ReminderWidget.jsx` - Widget component
+- `frontend/src/components/widgets/ReminderModal.jsx` - Create/edit form
+
+**Files Modified:**
+- `backend/app/core/scheduler.py` - Midnight reset task
+- `backend/app/api/v1/router.py` - Router registration
+- `backend/app/models/__init__.py`, `user.py` - Model imports/relationships
+- `frontend/src/components/widgets/widgetRegistry.js` - Widget registration
+
+---
+
+### Package Tracker - Enhanced Deduplication (Completed - 2026-02-14)
+**Three-Layer Deduplication System**
+- **Layer 1:** Exact tracking number match (case-insensitive)
+- **Layer 2:** ORDER # / tracking number normalization (bidirectional)
+  - Real tracking arrives after ORDER # → Updates ORDER # package
+  - ORDER # arrives after real tracking → Skips duplicate
+- **Layer 3:** Subject similarity detection (NEW)
+  - Compares email subjects using word overlap (Jaccard similarity)
+  - Checks packages from last 7 days
+  - If similarity > 70%, treats as duplicate
+  - Smart update: If new email has better tracking info, updates existing package
+
+**Technical Implementation:**
+- `calculate_subject_similarity()` function using word-based Jaccard similarity
+- Removes common filler words for accurate matching
+- Handles progressive emails (Order Placed → Shipped → Delivered)
+- Prevents Corsair Nightsaber duplicate issue
+
+**Files Modified:**
+- `backend/app/core/scheduler.py` - Enhanced email scanning logic
+
+---
 
 ### Weather Widget - Severe Weather Alerts (Completed - 2026-02-14)
 **National Weather Service Integration**

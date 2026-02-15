@@ -25,3 +25,5 @@ class User(Base):
     weight_entries = relationship("WeightEntry", back_populates="user", cascade="all, delete-orphan")
     email_accounts = relationship("EmailAccount", back_populates="user", cascade="all, delete-orphan")
     email_credential = relationship("EmailCredential", back_populates="user", uselist=False, cascade="all, delete-orphan")
+    reminders = relationship("Reminder", back_populates="user", cascade="all, delete-orphan")
+    reminder_instances = relationship("ReminderInstance", back_populates="user", cascade="all, delete-orphan")
