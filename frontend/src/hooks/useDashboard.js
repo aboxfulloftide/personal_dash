@@ -132,8 +132,8 @@ export function useDashboard() {
   const acknowledgeAlert = useCallback(async (widgetId) => {
     try {
       await api.post(`/widgets/${widgetId}/acknowledge`);
-      // Reload dashboard to get updated widget state
-      await loadDashboard();
+      // Silent reload so the overlay dismisses cleanly without a full-page flash
+      await loadDashboard({ silent: true });
     } catch (error) {
       console.error('Failed to acknowledge alert:', error);
     }

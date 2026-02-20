@@ -3,6 +3,7 @@ import DashboardHeader from '../components/layout/DashboardHeader';
 import DashboardGrid from '../components/layout/DashboardGrid';
 import AddWidgetModal from '../components/layout/AddWidgetModal';
 import WidgetSettingsModal from '../components/widgets/WidgetSettingsModal';
+import AlertsOverlay from '../components/alerts/AlertsOverlay';
 import { useDashboard } from '../hooks/useDashboard';
 
 export default function DashboardPage() {
@@ -40,6 +41,8 @@ export default function DashboardPage() {
     );
   }
 
+  const alertedWidgets = widgets.filter((w) => w.alert_active);
+
   return (
     <div className="min-h-screen bg-gray-100 dark:bg-gray-900">
       <DashboardHeader
@@ -47,6 +50,9 @@ export default function DashboardPage() {
         onToggleEdit={() => setIsEditing(!isEditing)}
         onAddWidget={() => setShowAddModal(true)}
       />
+
+      {/* Floating alert cards — overlays the grid without affecting layout */}
+      <AlertsOverlay alertedWidgets={alertedWidgets} onAcknowledge={acknowledgeAlert} />
 
       <main className="w-full px-4 py-6">
         {widgets.length === 0 ? (
@@ -75,7 +81,6 @@ export default function DashboardPage() {
             onRemoveWidget={removeWidget}
             onWidgetSettings={handleWidgetSettings}
             onWidgetConfigChange={updateWidgetConfig}
-            onAcknowledgeAlert={acknowledgeAlert}
             isEditing={isEditing}
           />
         )}

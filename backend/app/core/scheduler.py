@@ -53,6 +53,12 @@ def calculate_subject_similarity(subject1: str, subject2: str) -> float:
 # Global scheduler instance
 scheduler = None
 
+# In-memory cooldown tracker for weather alerts.
+# Prevents re-alerting for the same weather event within WEATHER_ALERT_COOLDOWN_HOURS.
+# Format: {widget_id: {"message": str, "triggered_at": datetime}}
+_weather_alert_cooldowns: dict[str, dict] = {}
+WEATHER_ALERT_COOLDOWN_HOURS = 4
+
 
 async def scan_user_email_task():
     """
@@ -219,13 +225,16 @@ async def scan_user_email_task():
                 packages_delivered = 0
                 for delivery_info in scan_result.delivery_confirmations:
                     tracking_number = delivery_info.tracking_number
+                    delivery_subject = delivery_info.found_in_subject
 
                     # Try to mark existing package as delivered
+                    # Pass the subject to enable subject similarity matching as fallback
                     try:
                         package = mark_package_delivered_by_tracking(
                             db,
                             cred.user_id,
-                            tracking_number
+                            tracking_number,
+                            delivery_subject=delivery_subject
                         )
                         if package:
                             packages_delivered += 1
@@ -591,11 +600,27 @@ async def monitor_weather_alerts_task():
 
                                 message = f"Severe Weather: {event_types}"
 
-                                # Only trigger if not already active or if message changed
-                                already_active = widget.get("alert_active", False)
-                                current_message = widget.get("alert_message", "")
+                                # Cooldown check: same alert won't fire more than once per
+                                # WEATHER_ALERT_COOLDOWN_HOURS hours.  A new/different alert
+                                # always fires immediately.
+                                now = datetime.now()
+                                cooldown_info = _weather_alert_cooldowns.get(widget_id)
 
-                                if not already_active or current_message != message:
+                                if cooldown_info is None:
+                                    should_trigger = True  # First time seeing any alert
+                                elif cooldown_info["message"] != message:
+                                    should_trigger = True  # Different alert — show immediately
+                                elif (now - cooldown_info["triggered_at"]).total_seconds() > WEATHER_ALERT_COOLDOWN_HOURS * 3600:
+                                    should_trigger = True  # Same alert but cooldown expired
+                                else:
+                                    should_trigger = False  # Same alert within cooldown — skip
+                                    logger.debug(
+                                        f"Skipping repeat alert for widget {widget_id} "
+                                        f"(cooldown {WEATHER_ALERT_COOLDOWN_HOURS}h, "
+                                        f"last triggered {cooldown_info['triggered_at']}): {message}"
+                                    )
+
+                                if should_trigger:
                                     trigger_widget_alert(
                                         db=db,
                                         user_id=dashboard.user_id,
@@ -603,12 +628,18 @@ async def monitor_weather_alerts_task():
                                         severity=widget_severity,
                                         message=message,
                                     )
+                                    _weather_alert_cooldowns[widget_id] = {
+                                        "message": message,
+                                        "triggered_at": now,
+                                    }
                                     logger.info(f"Triggered {widget_severity} alert for widget {widget_id}: {message}")
                         else:
-                            # No alerts - clear any existing widget alert
+                            # No alerts - clear any existing widget alert and reset cooldown
+                            # so the next occurrence of the same event will alert again.
                             if widget.get("alert_active"):
                                 acknowledge_widget_alert(db, dashboard.user_id, widget_id)
                                 logger.info(f"Cleared alert for widget {widget_id} (no active weather alerts)")
+                            _weather_alert_cooldowns.pop(widget_id, None)
 
                     except Exception as e:
                         logger.error(f"Error checking alerts for widget {widget_id}: {e}")

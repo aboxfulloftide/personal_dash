@@ -1,6 +1,5 @@
 import { Suspense, lazy, useState } from 'react';
 import { getWidget } from './widgetRegistry';
-import AlertBanner from '../alerts/AlertBanner';
 
 function WidgetLoader() {
   return (
@@ -38,11 +37,9 @@ export default function WidgetContainer({
   widgetId,
   alertActive = false,
   alertSeverity = null,
-  alertMessage = null,
   onRemove,
   onSettings,
   onConfigChange,
-  onAcknowledge,
   isEditing = false
 }) {
   const [error, setError] = useState(null);
@@ -103,14 +100,6 @@ export default function WidgetContainer({
 
       {/* Widget Content */}
       <div className="flex-1 overflow-auto p-3 scrollbar-hide">
-        {alertActive && (
-          <AlertBanner
-            severity={alertSeverity}
-            message={alertMessage}
-            widgetId={widgetId}
-            onAcknowledge={onAcknowledge}
-          />
-        )}
         {error ? (
           <WidgetError error={error} onRetry={handleRetry} />
         ) : (

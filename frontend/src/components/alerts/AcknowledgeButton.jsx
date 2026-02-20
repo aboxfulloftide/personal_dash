@@ -1,21 +1,18 @@
 import { useState } from 'react';
-import api from '../../services/api';
 
 /**
- * AcknowledgeButton - Button to acknowledge and clear widget alerts
+ * AcknowledgeButton - Button to acknowledge and clear widget alerts.
+ * Delegates the API call entirely to the onAcknowledge callback
+ * (acknowledgeAlert in useDashboard) to avoid double-calling the endpoint.
  */
 export default function AcknowledgeButton({ widgetId, onAcknowledge }) {
   const [isAcknowledging, setIsAcknowledging] = useState(false);
 
   const handleAcknowledge = async () => {
+    if (!onAcknowledge) return;
     setIsAcknowledging(true);
     try {
-      await api.post(`/widgets/${widgetId}/acknowledge`);
-
-      // Call parent callback to update UI
-      if (onAcknowledge) {
-        onAcknowledge(widgetId);
-      }
+      await onAcknowledge(widgetId);
     } catch (error) {
       console.error('Failed to acknowledge alert:', error);
     } finally {
