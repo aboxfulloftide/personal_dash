@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 
-from app.api.v1.endpoints import auth, calendar, custom_widgets, dashboard, email_credentials, email_scanner, finance, network, news, packages, reminders, servers, weather
+from app.api.v1.endpoints import auth, calendar, custom_widgets, dashboard, email_credentials, email_scanner, finance, fitness, network, news, packages, reminders, servers, weather
 
 api_router = APIRouter()
 
@@ -17,6 +17,7 @@ api_router.include_router(email_credentials.router)
 api_router.include_router(network.router)
 api_router.include_router(reminders.router)
 api_router.include_router(custom_widgets.router)
+api_router.include_router(fitness.router)
 
 
 @api_router.get("/")

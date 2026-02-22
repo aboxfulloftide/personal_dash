@@ -59,6 +59,9 @@ scheduler = None
 _weather_alert_cooldowns: dict[str, dict] = {}
 WEATHER_ALERT_COOLDOWN_HOURS = 4
 
+# In-memory cooldown tracker for custom widget alerts (same 4-hour pattern).
+_custom_widget_alert_cooldowns: dict[str, dict] = {}
+
 
 async def scan_user_email_task():
     """
@@ -110,6 +113,11 @@ async def scan_user_email_task():
 
                 packages_added = 0
 
+                # Track which email subjects we've already created packages for
+                # in THIS scan run, to prevent multiple false-positive tracking
+                # numbers from the same email creating duplicate packages.
+                emails_already_packaged = set()
+
                 # Add new packages
                 for tracking_info in scan_result.tracking_numbers:
                     tracking_number = tracking_info.tracking_number
@@ -145,6 +153,9 @@ async def scan_user_email_task():
                                 cleaned_subject = clean_email_subject(tracking_info.found_in_subject)
                                 existing_order.description = f"Auto: {cleaned_subject[:50]}"
                             db.commit()
+                            # Update tracking sets so subsequent iterations see the change
+                            existing_tracking_numbers.add(tracking_upper)
+                            existing_tracking_numbers.add(tracking_normalized)
                             continue
 
                     # Check if this is an ORDER # and the real tracking number already exists
@@ -153,7 +164,20 @@ async def scan_user_email_task():
                         logger.info(f"Skipping ORDER # duplicate - real tracking number already exists: {tracking_normalized}")
                         continue
 
-                    # THIRD LAYER: Check for similar subjects in recent packages (last 7 days)
+                    # LAYER 3a: Per-email deduplication
+                    # If we already created a package from this exact email (same subject+sender),
+                    # skip any additional tracking numbers from it — they are likely false positives
+                    # (e.g., 12-digit order numbers matching the FedEx regex).
+                    email_key = (tracking_info.found_in_subject, tracking_info.email_sender)
+                    if email_key in emails_already_packaged:
+                        logger.info(
+                            f"Skipping additional tracking number from same email "
+                            f"(already created package from this email): {tracking_number} "
+                            f"Subject: '{tracking_info.found_in_subject[:60]}'"
+                        )
+                        continue
+
+                    # LAYER 3b: Check for similar subjects in recent packages (last 7 days)
                     # This catches cases where duplicate emails come in with slightly different subjects
                     # but no tracking/order numbers yet (e.g., "Order Placed" then "Shipped" emails)
                     seven_days_ago = datetime.now() - timedelta(days=7)
@@ -216,8 +240,17 @@ async def scan_user_email_task():
                             email_body_snippet=tracking_info.email_body_snippet,
                             tracking_url=tracking_info.tracking_url,
                         )
-                        create_package(db, cred.user_id, package_data)
+                        new_pkg = create_package(db, cred.user_id, package_data)
                         packages_added += 1
+
+                        # CRITICAL: Update dedup state so subsequent loop iterations
+                        # can see this newly created package. Without this, multiple
+                        # tracking numbers from the same email all pass dedup checks.
+                        existing_tracking_numbers.add(tracking_upper)
+                        existing_tracking_numbers.add(tracking_normalized)
+                        if new_pkg:
+                            all_packages.append(new_pkg)
+                        emails_already_packaged.add(email_key)
                     except Exception as e:
                         logger.error(f"Failed to create package: {e}")
 
@@ -655,6 +688,126 @@ async def monitor_weather_alerts_task():
     logger.info("Weather alerts monitoring completed")
 
 
+async def sync_garmin_task():
+    """
+    Background task that syncs Garmin data for all users with sync enabled.
+    Runs every 6 hours, fetches last 7 days to backfill gaps.
+    """
+    logger.info("Starting Garmin sync task")
+
+    db = SessionLocal()
+    try:
+        from sqlalchemy import select
+        from app.models.fitness import GarminCredential
+        from app.api.v1.endpoints.fitness import sync_garmin_for_user
+
+        stmt = select(GarminCredential).where(GarminCredential.sync_enabled == True)
+        result = db.execute(stmt)
+        credentials = list(result.scalars().all())
+
+        logger.info(f"Found {len(credentials)} users with Garmin sync enabled")
+
+        for cred in credentials:
+            try:
+                await sync_garmin_for_user(db, cred.user_id, days_back=7)
+            except Exception as e:
+                logger.error(f"Garmin sync failed for user {cred.user_id}: {e}")
+
+    except Exception as e:
+        logger.error(f"Error in Garmin sync task: {e}")
+    finally:
+        db.close()
+
+    logger.info("Garmin sync task completed")
+
+
+async def monitor_custom_widget_alerts_task():
+    """
+    Background task that scans all custom widgets for alert_active items
+    and triggers/clears widget-level alerts with a 4-hour cooldown.
+    """
+    logger.info("Starting custom widget alerts monitoring task")
+
+    db = SessionLocal()
+    try:
+        from app.crud.custom_widget import get_alert_status
+
+        # Get all users with dashboards
+        query = select(DashboardLayout)
+        result = db.execute(query)
+        dashboards = list(result.scalars().all())
+
+        for dashboard in dashboards:
+            try:
+                if not dashboard.layout:
+                    continue
+
+                widgets = dashboard.layout.get("widgets", [])
+
+                for widget in widgets:
+                    if widget.get("type") != "custom_widget":
+                        continue
+
+                    widget_id = widget.get("id")
+                    if not widget_id:
+                        continue
+
+                    try:
+                        alert_active, alert_severity, alert_message = get_alert_status(
+                            db, dashboard.user_id, widget_id
+                        )
+
+                        if alert_active and alert_message:
+                            now = datetime.now()
+                            cooldown_info = _custom_widget_alert_cooldowns.get(widget_id)
+
+                            if cooldown_info is None:
+                                should_trigger = True
+                            elif cooldown_info["message"] != alert_message:
+                                should_trigger = True
+                            elif (now - cooldown_info["triggered_at"]).total_seconds() > WEATHER_ALERT_COOLDOWN_HOURS * 3600:
+                                should_trigger = True
+                            else:
+                                should_trigger = False
+                                logger.debug(
+                                    f"Skipping repeat custom widget alert for {widget_id} "
+                                    f"(cooldown {WEATHER_ALERT_COOLDOWN_HOURS}h): {alert_message}"
+                                )
+
+                            if should_trigger:
+                                trigger_widget_alert(
+                                    db=db,
+                                    user_id=dashboard.user_id,
+                                    widget_id=widget_id,
+                                    severity=alert_severity,
+                                    message=alert_message,
+                                )
+                                _custom_widget_alert_cooldowns[widget_id] = {
+                                    "message": alert_message,
+                                    "triggered_at": now,
+                                }
+                                logger.info(f"Triggered {alert_severity} alert for custom widget {widget_id}: {alert_message}")
+                        else:
+                            # No alerts — clear any existing widget alert and reset cooldown
+                            if widget.get("alert_active"):
+                                acknowledge_widget_alert(db, dashboard.user_id, widget_id)
+                                logger.info(f"Cleared alert for custom widget {widget_id}")
+                            _custom_widget_alert_cooldowns.pop(widget_id, None)
+
+                    except Exception as e:
+                        logger.error(f"Error checking alerts for custom widget {widget_id}: {e}")
+
+            except Exception as e:
+                logger.error(f"Error checking custom widget alerts for user {dashboard.user_id}: {e}")
+
+    except Exception as e:
+        logger.error(f"Error in custom widget alerts monitoring task: {e}")
+    finally:
+        db.close()
+
+    logger.info("Custom widget alerts monitoring completed")
+
+
 def start_scheduler():
     """Start the background scheduler."""
     global scheduler
@@ -711,8 +864,26 @@ def start_scheduler():
         replace_existing=True,
     )
 
+    # Monitor custom widget alerts every 5 minutes
+    scheduler.add_job(
+        monitor_custom_widget_alerts_task,
+        trigger=IntervalTrigger(minutes=5),
+        id="monitor_custom_widget_alerts",
+        name="Monitor custom widget alerts and trigger widget notifications",
+        replace_existing=True,
+    )
+
+    # Sync Garmin data every 6 hours
+    scheduler.add_job(
+        sync_garmin_task,
+        trigger=IntervalTrigger(hours=6),
+        id="sync_garmin",
+        name="Sync Garmin Connect data (steps, sleep, HR, activities)",
+        replace_existing=True,
+    )
+
     scheduler.start()
-    logger.info("Background scheduler started - email auto-scan, package cleanup, speed test cleanup, weather alerts monitoring, and reminders enabled")
+    logger.info("Background scheduler started - email auto-scan, package cleanup, speed test cleanup, weather alerts monitoring, reminders, custom widget alerts, and Garmin sync enabled")
 
 
 def stop_scheduler():

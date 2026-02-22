@@ -27,3 +27,6 @@ class User(Base):
     email_credential = relationship("EmailCredential", back_populates="user", uselist=False, cascade="all, delete-orphan")
     reminders = relationship("Reminder", back_populates="user", cascade="all, delete-orphan")
     reminder_instances = relationship("ReminderInstance", back_populates="user", cascade="all, delete-orphan")
+    garmin_credential = relationship("GarminCredential", back_populates="user", uselist=False, cascade="all, delete-orphan")
+    garmin_daily_stats = relationship("GarminDailyStat", back_populates="user", cascade="all, delete-orphan")
+    garmin_activities = relationship("GarminActivity", back_populates="user", cascade="all, delete-orphan")

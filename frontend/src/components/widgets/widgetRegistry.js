@@ -132,18 +132,25 @@ const widgetRegistry = {
     },
   },
   fitness: {
-    component: () => import('./PlaceholderWidget'),
+    component: () => import('./FitnessWidget'),
     name: 'Fitness Stats',
-    description: 'Body weight tracking with charts',
+    description: 'Track weight manually and sync steps, sleep, HR, and workouts from Garmin Connect',
     category: 'lifestyle',
-    defaultSize: { w: 3, h: 2 },
-    minSize: { w: 2, h: 2 },
-    maxSize: { w: 6, h: 4 },
+    defaultSize: { w: 3, h: 4 },
+    minSize: { w: 2, h: 3 },
+    maxSize: { w: 5, h: 6 },
     hasDataEndpoint: true,
     configSchema: {
       title: { type: 'text', label: 'Title', default: 'Fitness Stats' },
-      days: { type: 'number', label: 'Days to Show', default: 30, min: 7, max: 365, step: 1 },
-      goal_weight: { type: 'number', label: 'Goal Weight', min: 50, max: 500, step: 0.1 },
+      unit: {
+        type: 'select', label: 'Weight Unit', default: 'lbs',
+        options: [
+          { value: 'lbs', label: 'lbs' },
+          { value: 'kg', label: 'kg' },
+        ],
+      },
+      days_back: { type: 'number', label: 'Chart History (days)', default: 30, min: 7, max: 90, step: 1 },
+      refresh_interval: { type: 'number', label: 'Refresh (seconds)', default: 300, min: 60, max: 3600, step: 60 },
     },
   },
   news_headlines: {
