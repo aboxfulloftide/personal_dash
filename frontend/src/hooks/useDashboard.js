@@ -72,7 +72,7 @@ export function useDashboard() {
       // Find the rightmost edge in that row
       const rightEdge = Math.max(...bottomRow.map(l => l.x + l.w));
 
-      if (rightEdge + w <= 12) {
+      if (rightEdge + w <= 24) {
         // Fits to the right on the same row
         x = rightEdge;
         y = maxY;
