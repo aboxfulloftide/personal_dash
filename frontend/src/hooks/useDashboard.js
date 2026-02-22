@@ -105,12 +105,18 @@ export function useDashboard() {
 
   // Remove widget
   const removeWidget = useCallback((widgetId) => {
+    const widget = widgets.find(w => w.id === widgetId);
     const newWidgets = widgets.filter(w => w.id !== widgetId);
     const newLayout = layout.filter(l => l.i !== widgetId);
 
     setWidgets(newWidgets);
     setLayout(newLayout);
     saveDashboard(newWidgets, newLayout);
+
+    // Clean up custom widget data rows when the widget is removed
+    if (widget?.type === 'custom_widget') {
+      api.delete(`/custom-widgets/${widgetId}/items`).catch(console.error);
+    }
   }, [widgets, layout, saveDashboard]);
 
   // Update layout

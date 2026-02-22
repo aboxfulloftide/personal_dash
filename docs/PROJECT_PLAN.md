@@ -155,14 +155,24 @@ personal-dash/
   - If similarity > 70%, treats as duplicate
   - Smart update: If new email has better tracking info, updates existing package
 
+**Delivery Confirmation Matching (Enhanced - 2026-02-16)**
+- **Primary:** Exact tracking number match (case-insensitive)
+- **Fallback:** Subject similarity matching (60% threshold)
+  - Handles cases where delivery email has different/missing tracking number
+  - Checks undelivered packages from last 14 days
+  - Uses same Jaccard similarity algorithm as duplicate detection
+  - Example: "Ordered: VO2-Boost Natural Endurnace" matches "Delivered: Vo2-Boost Natural Endurance"
+
 **Technical Implementation:**
 - `calculate_subject_similarity()` function using word-based Jaccard similarity
 - Removes common filler words for accurate matching
 - Handles progressive emails (Order Placed → Shipped → Delivered)
 - Prevents Corsair Nightsaber duplicate issue
+- Delivery matching uses 60% threshold (more lenient than 70% for duplicates)
 
 **Files Modified:**
-- `backend/app/core/scheduler.py` - Enhanced email scanning logic
+- `backend/app/core/scheduler.py` - Enhanced email scanning logic, delivery confirmation processing
+- `backend/app/crud/package.py` - Subject similarity fallback for delivery matching
 
 ---
 

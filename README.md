@@ -10,6 +10,7 @@ A self-hosted, multi-user personal dashboard that aggregates various data source
 - Dark mode support
 - Mobile responsive design
 - Plugin/widget architecture for extensibility
+- **Custom Widget** — push data from any script or automation via REST API
 - Remote server monitoring agent
 
 ## Tech Stack
@@ -219,13 +220,208 @@ Display current weather conditions and 5-day forecast for any location.
 
 ---
 
+---
+
+### Custom Widget
+
+Display data from your own scripts, automation pipelines, or external tools — no frontend code required. Items are stored in the database and managed via a built-in UI. External scripts can push updates through the REST API.
+
+**Use cases:**
+- Status board fed by a cron job or CI/CD pipeline
+- Home automation alerts from a shell script
+- Server health summaries from a monitoring script
+- Any custom data you want surfaced on your dashboard
+
+**Features:**
+- Built-in item editor (add, edit, delete, reorder by priority)
+- Per-item visibility toggle without deleting
+- Color-coded left border per item (red/yellow/green/blue)
+- Highlight rows for emphasis
+- Optional emoji icon, subtitle, description, and link
+- Widget-level alerts triggered when any item has `alert_active = true`
+- Per-item alert acknowledgment — suppress re-notification without deleting the item
+- 4-hour cooldown prevents repeat notifications for the same alert
+- Bulk push endpoint for efficiently replacing all items in one request
+- Four display modes: List, Compact, Table, Grid
+
+#### Display Modes
+
+Configure via the widget's settings gear (⚙):
+
+| Mode | What it shows | Best for |
+|---|---|---|
+| **List** | icon + title + subtitle + description + link | General purpose (default) |
+| **Compact** | icon + title only, minimal padding | Many short status lines |
+| **Table** | title on left, subtitle on right | Key/value pairs (service: status) |
+| **Grid** | 2-column cards with icon + title + subtitle | Grouped status indicators |
+
+#### Using the Dashboard UI
+
+1. Add a **Custom Widget** from the widget picker
+2. Click the settings gear to choose a **Display Mode**
+3. Click **Manage Items** at the bottom of the widget
+4. Use the form to add items — all fields except Title are optional
+5. Toggle visibility per row without deleting; reorder with the Priority field (higher = top)
+
+#### Pushing Data via the REST API
+
+All endpoints require a Bearer token (same JWT your browser uses). Obtain one at `POST /api/v1/auth/login`.
+
+**Base URL:** `/api/v1/custom-widgets/{widget_id}/items`
+
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/{widget_id}/items` | List visible items (widget display) |
+| `GET` | `/{widget_id}/items/all` | List all items including hidden (manage UI) |
+| `POST` | `/{widget_id}/items` | Create one item |
+| `POST` | `/{widget_id}/items/bulk` | Create multiple items at once (see below) |
+| `PUT` | `/{widget_id}/items/{id}` | Update an item |
+| `DELETE` | `/{widget_id}/items/{id}` | Delete one item |
+| `DELETE` | `/{widget_id}/items` | Delete all items for a widget |
+| `POST` | `/{widget_id}/items/{id}/acknowledge` | Acknowledge an item's alert |
+
+**Item fields:**
+
+| Field | Type | Description |
+|---|---|---|
+| `title` | string | **Required.** Main display text |
+| `subtitle` | string | Secondary text shown next to title |
+| `description` | string | Smaller text shown below |
+| `icon` | string | Emoji displayed before the title (e.g. `"✅"`, `"⚠️"`) |
+| `link_url` | string | Opens in a new tab when clicked |
+| `link_text` | string | Label for the link (defaults to `→`) |
+| `visible` | bool | Show/hide without deleting (default `true`) |
+| `highlight` | bool | Yellow background emphasis (default `false`) |
+| `color` | string | Left border color: `red`, `yellow`, `green`, `blue` |
+| `priority` | int | Sort order — higher number appears first (default `0`) |
+| `alert_active` | bool | Triggers a widget-level alert when `true` |
+| `alert_severity` | string | `critical`, `warning`, or `info` |
+| `alert_message` | string | Alert text (falls back to item title if omitted) |
+| `acknowledged` | bool | Read-only. `true` after user acknowledges the alert |
+| `acknowledged_at` | datetime | Read-only. Timestamp of acknowledgment |
+
+#### Example: Python Script
+
+```python
+import requests
+
+API = "http://localhost:8000/api/v1"
+
+# Authenticate
+token = requests.post(f"{API}/auth/login", data={
+    "username": "your@email.com",
+    "password": "yourpassword",
+}).json()["access_token"]
+
+headers = {"Authorization": f"Bearer {token}"}
+WIDGET_ID = "widget-1234567890"  # copy from browser URL or widget settings
+
+# Push a status item
+requests.post(f"{API}/custom-widgets/{WIDGET_ID}/items", headers=headers, json={
+    "title": "Build #42",
+    "subtitle": "main branch",
+    "icon": "✅",
+    "color": "green",
+    "priority": 10,
+    "alert_active": False,
+})
+```
+
+#### Example: Shell / curl
+
+```bash
+WIDGET_ID="widget-1234567890"
+TOKEN="eyJ..."
+
+# Create a critical alert item
+curl -s -X POST "http://localhost:8000/api/v1/custom-widgets/$WIDGET_ID/items" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "title": "Disk usage critical",
+    "subtitle": "/dev/sda1 at 95%",
+    "icon": "🔴",
+    "color": "red",
+    "alert_active": true,
+    "alert_severity": "critical",
+    "alert_message": "Disk near capacity on prod-01"
+  }'
+
+# Clear the alert once resolved
+curl -s -X PUT "http://localhost:8000/api/v1/custom-widgets/$WIDGET_ID/items/$ITEM_ID" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"title": "Disk usage OK", "icon": "✅", "color": "green", "alert_active": false}'
+```
+
+#### Bulk Push
+
+Use `POST /{widget_id}/items/bulk` to push multiple items in a single request. Set `replace_all: true` to atomically clear existing items and replace them — the recommended pattern for cron scripts:
+
+```bash
+curl -s -X POST "$API/custom-widgets/$WIDGET_ID/items/bulk" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "replace_all": true,
+    "items": [
+      {"title": "Web Server", "subtitle": "nginx running", "icon": "✅", "color": "green", "priority": 3},
+      {"title": "Database",   "subtitle": "MySQL running", "icon": "✅", "color": "green", "priority": 2},
+      {"title": "Disk",       "subtitle": "42% used",      "icon": "💾", "color": "blue",  "priority": 1}
+    ]
+  }'
+```
+
+#### Alert Acknowledgment
+
+When an item has `alert_active: true`, the dashboard displays a floating alert overlay with an **Acknowledge** button. Clicking it:
+
+1. Clears the widget-level alert from the overlay
+2. Marks all active alert items as `acknowledged: true` in the database
+3. Stops the background scheduler from re-triggering the alert
+
+The acknowledged state is reset automatically when an external script updates the item with `alert_active: true` again (e.g., the condition recurs on the next cron run).
+
+You can also acknowledge individual items from the **Manage Items** modal — items with unacknowledged alerts show a clickable **alert** badge; acknowledged ones show a dimmed **ack'd** badge.
+
+#### Example: Cron-based Status Board
+
+A common pattern is a cron job that **bulk-replaces all items** each run:
+
+```bash
+#!/bin/bash
+# /usr/local/bin/update_dash.sh — runs every 5 minutes via cron
+
+WIDGET_ID="widget-1234567890"
+TOKEN="eyJ..."
+API="http://localhost:8000/api/v1"
+AUTH=(-H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json")
+
+DISK=$(df -h / | awk 'NR==2{print $5}')
+LOAD=$(uptime | awk -F'load average:' '{print $2}' | xargs)
+
+curl -s -X POST "$API/custom-widgets/$WIDGET_ID/items/bulk" "${AUTH[@]}" -d "{
+  \"replace_all\": true,
+  \"items\": [
+    {\"title\": \"Disk\", \"subtitle\": \"$DISK used\", \"icon\": \"💾\", \"priority\": 2},
+    {\"title\": \"Load\", \"subtitle\": \"$LOAD\",      \"icon\": \"📊\", \"priority\": 1}
+  ]
+}"
+```
+
+#### Finding Your Widget ID
+
+The widget ID is generated when you add the widget and looks like `widget-1234567890`. Find it by:
+- Opening your browser dev tools → Network tab → any `GET /custom-widgets/...` request
+- Or checking the dashboard layout API: `GET /api/v1/dashboard/layout`
+
+---
+
 ### Planned Widgets
 
 | Widget | Description |
 |---|---|
 | Fitness Stats | Body weight tracking with charts |
-| Calendar | Google Calendar integration |
-| News Headlines | RSS/News API aggregation |
 | Smart Home | Home Assistant integration |
 
 ## Widget Alert System

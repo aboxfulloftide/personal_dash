@@ -244,6 +244,32 @@ const widgetRegistry = {
       refresh_interval: { type: 'number', label: 'Refresh Interval (seconds)', default: 60, min: 30, max: 600, step: 30 },
     },
   },
+  custom_widget: {
+    component: () => import('./CustomWidget'),
+    name: 'Custom Widget',
+    description: 'Display custom data from your own scripts and automation',
+    category: 'monitoring',
+    defaultSize: { w: 3, h: 3 },
+    minSize: { w: 2, h: 2 },
+    maxSize: { w: 6, h: 6 },
+    hasDataEndpoint: true,
+    configSchema: {
+      title: { type: 'text', label: 'Title', default: 'Custom Widget' },
+      display_mode: {
+        type: 'select',
+        label: 'Display Mode',
+        default: 'list',
+        options: [
+          { value: 'list', label: 'List — icon, title, subtitle, description' },
+          { value: 'compact', label: 'Compact — icon + title only, maximum density' },
+          { value: 'table', label: 'Table — title | subtitle as key/value pairs' },
+          { value: 'grid', label: 'Grid — 2-column card layout' },
+        ],
+      },
+      max_items: { type: 'number', label: 'Max Items', default: 10, min: 1, max: 50, step: 1 },
+      refresh_interval: { type: 'number', label: 'Refresh Interval (seconds)', default: 60, min: 30, max: 3600, step: 30 },
+    },
+  },
   reminders: {
     component: () => import('./ReminderWidget'),
     name: 'Reminders',
