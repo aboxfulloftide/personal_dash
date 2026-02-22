@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { HardDrive, Settings, Home, Folder, Globe, AlertTriangle, Lock } from 'lucide-react';
 import { useWidgetData } from '../../hooks/useWidgetData';
 import axios from 'axios';
 
@@ -25,13 +26,15 @@ function formatDriveCapacity(bytes) {
 }
 
 function getDriveIcon(fstype, mountPoint) {
-  if (!mountPoint) return '💾';
-  if (mountPoint === '/') return '💾';
-  if (mountPoint.includes('boot')) return '⚙️';
-  if (mountPoint.includes('home')) return '🏠';
-  if (mountPoint.includes('mnt') || mountPoint.includes('media')) return '📁';
-  if (fstype && (fstype.includes('nfs') || fstype.includes('cifs') || fstype.includes('smb'))) return '🌐';
-  return '💾';
+  const iconClass = "w-3.5 h-3.5 flex-shrink-0";
+
+  if (!mountPoint) return <HardDrive className={`${iconClass} text-gray-600 dark:text-gray-400`} />;
+  if (mountPoint === '/') return <HardDrive className={`${iconClass} text-blue-600 dark:text-blue-400`} />;
+  if (mountPoint.includes('boot')) return <Settings className={`${iconClass} text-purple-600 dark:text-purple-400`} />;
+  if (mountPoint.includes('home')) return <Home className={`${iconClass} text-green-600 dark:text-green-400`} />;
+  if (mountPoint.includes('mnt') || mountPoint.includes('media')) return <Folder className={`${iconClass} text-orange-600 dark:text-orange-400`} />;
+  if (fstype && (fstype.includes('nfs') || fstype.includes('cifs') || fstype.includes('smb'))) return <Globe className={`${iconClass} text-cyan-600 dark:text-cyan-400`} />;
+  return <HardDrive className={`${iconClass} text-gray-600 dark:text-gray-400`} />;
 }
 
 function getBarColor(percent) {
@@ -387,10 +390,10 @@ function DriveList({ drives, serverId, onRefresh, isEditing }) {
                   {drive.mount_point}
                 </span>
                 {!drive.is_mounted && (
-                  <span className="text-orange-500" title="Unmounted">⚠️</span>
+                  <AlertTriangle className="w-3.5 h-3.5 text-orange-500" title="Unmounted" />
                 )}
                 {drive.is_readonly && (
-                  <span className="text-blue-500" title="Read-only">🔒</span>
+                  <Lock className="w-3.5 h-3.5 text-blue-500" title="Read-only" />
                 )}
               </div>
               <div className="flex items-center gap-2 flex-shrink-0">
@@ -960,10 +963,10 @@ function MultiServerView({ serverIds, config, isEditing }) {
                       >
                         <div className="flex items-center justify-between mb-0.5">
                           <div className="flex items-center gap-1 min-w-0 flex-1">
-                            <span className="flex-shrink-0 text-[10px]">{getDriveIcon(drive.fstype, drive.mount_point)}</span>
+                            {getDriveIcon(drive.fstype, drive.mount_point)}
                             <span className="text-gray-700 dark:text-gray-300 truncate">{drive.mount_point}</span>
-                            {!drive.is_mounted && <span className="text-orange-500 text-[10px]" title="Unmounted">⚠️</span>}
-                            {drive.is_readonly && <span className="text-blue-500 text-[10px]" title="Read-only">🔒</span>}
+                            {!drive.is_mounted && <AlertTriangle className="w-3 h-3 text-orange-500" title="Unmounted" />}
+                            {drive.is_readonly && <Lock className="w-3 h-3 text-blue-500" title="Read-only" />}
                           </div>
                           {isEditing && hoveredDriveId === drive.id && (
                             <button

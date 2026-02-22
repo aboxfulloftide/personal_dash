@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { Check, Mail, AlertTriangle, ExternalLink } from 'lucide-react';
 import { useWidgetData } from '../../hooks/useWidgetData';
 import api from '../../services/api';
 
@@ -116,16 +117,16 @@ function PackageCard({ pkg, onDelete, onRequestDelete, onViewEmail }) {
           <span className="text-xs text-gray-500 dark:text-gray-400 font-mono">
             {truncateTracking(pkg.tracking_number)}
           </span>
-          <span className="text-xs text-gray-400 dark:text-gray-500">↗</span>
+          <ExternalLink className="w-3 h-3 text-gray-400 dark:text-gray-500" />
           {pkg.delivered && (
-            <span className="text-xs text-green-600 dark:text-green-400">✓</span>
+            <Check className="w-3.5 h-3.5 text-green-600 dark:text-green-400" />
           )}
           {pkg.email_source && (
             <span
-              className={`text-xs px-1.5 py-0.5 rounded font-medium ${getEmailColor(pkg.email_source)}`}
+              className={`text-xs px-1.5 py-0.5 rounded font-medium flex items-center ${getEmailColor(pkg.email_source)}`}
               title={`From: ${pkg.email_source}`}
             >
-              📧
+              <Mail className="w-3 h-3" />
             </span>
           )}
         </div>
@@ -145,10 +146,10 @@ function PackageCard({ pkg, onDelete, onRequestDelete, onViewEmail }) {
         {pkg.email_source && (
           <button
             onClick={handleViewEmail}
-            className="p-1 text-blue-500 hover:text-blue-700 hover:bg-blue-100 dark:text-blue-400 dark:hover:text-blue-300 dark:hover:bg-blue-900/30 rounded transition-colors text-xs"
+            className="p-1 text-blue-500 hover:text-blue-700 hover:bg-blue-100 dark:text-blue-400 dark:hover:text-blue-300 dark:hover:bg-blue-900/30 rounded transition-colors"
             title="View original email"
           >
-            📧
+            <Mail className="w-3.5 h-3.5" />
           </button>
         )}
         <button
@@ -295,8 +296,9 @@ function EmailPreviewModal({ isOpen, onClose, package: pkg }) {
           {/* Email account badge */}
           <div className="flex items-center gap-2 text-sm">
             <span className="text-gray-500 dark:text-gray-400">From Email Account:</span>
-            <span className={`px-2 py-1 rounded font-medium ${getEmailColor(pkg.email_source)}`}>
-              📧 {pkg.email_source}
+            <span className={`px-2 py-1 rounded font-medium flex items-center gap-1 ${getEmailColor(pkg.email_source)}`}>
+              <Mail className="w-3.5 h-3.5" />
+              {pkg.email_source}
             </span>
           </div>
 
@@ -531,8 +533,9 @@ function EmailSetupModal({ isOpen, onClose, onSave, credentialId }) {
             <div className="text-sm text-red-500 bg-red-50 dark:bg-red-900/20 p-2 rounded">{error}</div>
           )}
           {testSuccess && (
-            <div className="text-sm text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-900/20 p-2 rounded">
-              ✓ Connection successful!
+            <div className="text-sm text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-900/20 p-2 rounded flex items-center gap-1.5">
+              <Check className="w-4 h-4" />
+              Connection successful!
             </div>
           )}
 
@@ -797,14 +800,16 @@ export default function PackageTrackerWidget({ config }) {
               >
                 <div className="flex items-center justify-between mb-1">
                   <span className="flex items-center gap-1 flex-1 min-w-0">
-                    <span className={`px-1.5 py-0.5 rounded font-medium ${getEmailColor(account.email_address)}`}>
-                      📧
+                    <span className={`px-1.5 py-0.5 rounded font-medium flex items-center ${getEmailColor(account.email_address)}`}>
+                      <Mail className="w-3 h-3" />
                     </span>
                     <span className="truncate" title={account.email_address}>
                       {account.email_address}
                     </span>
                     {account.enabled && (
-                      <span>{account.last_scan_status === 'error' ? '⚠️' : '✓'}</span>
+                      account.last_scan_status === 'error' ?
+                        <AlertTriangle className="w-3.5 h-3.5 text-amber-500" /> :
+                        <Check className="w-3.5 h-3.5 text-green-500" />
                     )}
                     {!account.enabled && (
                       <span className="text-gray-400">(off)</span>

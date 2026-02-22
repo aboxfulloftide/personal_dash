@@ -2,11 +2,13 @@ import React from 'react';
 import {
   LineChart,
   Line,
+  Area,
   XAxis,
   YAxis,
   CartesianGrid,
   Tooltip,
   ResponsiveContainer,
+  ComposedChart,
 } from 'recharts';
 
 /**
@@ -54,6 +56,23 @@ function PortfolioGraph({ data, currency = 'USD' }) {
     return date.toLocaleDateString('en-US', { month: 'numeric', day: 'numeric' });
   };
 
+  // Calculate tighter Y-axis domain for better visibility of changes
+  const values = data_points.map(p => p.total_value);
+  const minValue = Math.min(...values);
+  const maxValue = Math.max(...values);
+  const range = maxValue - minValue;
+
+  // Add 5% padding above and below for better visualization
+  // If range is very small (< 1% of value), use a minimum range for visibility
+  const minRange = minValue * 0.02; // 2% of min value as minimum range
+  const effectiveRange = Math.max(range, minRange);
+  const padding = effectiveRange * 0.05;
+
+  const yAxisDomain = [
+    Math.floor(minValue - padding),
+    Math.ceil(maxValue + padding)
+  ];
+
   return (
     <div className="space-y-3">
       {/* Summary Header */}
@@ -76,20 +95,28 @@ function PortfolioGraph({ data, currency = 'USD' }) {
 
       {/* Graph */}
       <ResponsiveContainer width="100%" height={200}>
-        <LineChart data={data_points}>
+        <ComposedChart data={data_points}>
+          <defs>
+            <linearGradient id="colorValue" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="5%" stopColor={lineColor} stopOpacity={0.3}/>
+              <stop offset="95%" stopColor={lineColor} stopOpacity={0}/>
+            </linearGradient>
+          </defs>
           <CartesianGrid strokeDasharray="3 3" stroke="#374151" opacity={0.3} />
           <XAxis
             dataKey="date"
             tickFormatter={formatDate}
             stroke="#9ca3af"
             fontSize={10}
-            tickCount={display_mode === 'weekly' ? 6 : 8}
+            tickCount={10}
           />
           <YAxis
+            domain={yAxisDomain}
             tickFormatter={(value) => `$${(value / 1000).toFixed(1)}k`}
             stroke="#9ca3af"
             fontSize={10}
             width={50}
+            tickCount={8}
           />
           <Tooltip
             contentStyle={{
@@ -110,15 +137,23 @@ function PortfolioGraph({ data, currency = 'USD' }) {
               return [`${value.toFixed(2)}%`, 'Change'];
             }}
           />
+          <Area
+            type="monotone"
+            dataKey="total_value"
+            fill="url(#colorValue)"
+            stroke="none"
+            isAnimationActive={false}
+          />
           <Line
             type="monotone"
             dataKey="total_value"
             stroke={lineColor}
             strokeWidth={2}
-            dot={false}
+            dot={{ fill: lineColor, r: 2 }}
+            activeDot={{ r: 4 }}
             isAnimationActive={false}
           />
-        </LineChart>
+        </ComposedChart>
       </ResponsiveContainer>
 
       {/* Display mode indicator */}

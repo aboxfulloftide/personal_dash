@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
+import { Briefcase, Eye, TrendingUp } from 'lucide-react';
 import api from '../../services/api';
 import PortfolioGraph from './PortfolioGraph';
 
@@ -40,11 +41,12 @@ function StockRow({ symbol, shares, price, changePercent, type, onRemove }) {
         >
           ×
         </button>
-        <span
-          className="text-xs"
-          title={isPortfolio ? 'Portfolio' : 'Watchlist'}
-        >
-          {isPortfolio ? '💼' : '👁️'}
+        <span title={isPortfolio ? 'Portfolio' : 'Watchlist'}>
+          {isPortfolio ? (
+            <Briefcase className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+          ) : (
+            <Eye className="w-3.5 h-3.5 text-gray-500 dark:text-gray-400" />
+          )}
         </span>
         <span className="font-medium text-gray-800 dark:text-gray-200 text-sm">
           {symbol}
@@ -111,24 +113,26 @@ function AddHoldingModal({ isOpen, onClose, onAdd }) {
               <button
                 type="button"
                 onClick={() => setType('portfolio')}
-                className={`flex-1 px-3 py-2 rounded text-sm transition-colors ${
+                className={`flex-1 px-3 py-2 rounded text-sm transition-colors flex items-center justify-center gap-1.5 ${
                   type === 'portfolio'
                     ? 'bg-blue-600 text-white'
                     : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300'
                 }`}
               >
-                💼 Portfolio
+                <Briefcase className="w-4 h-4" />
+                <span>Portfolio</span>
               </button>
               <button
                 type="button"
                 onClick={() => setType('watchlist')}
-                className={`flex-1 px-3 py-2 rounded text-sm transition-colors ${
+                className={`flex-1 px-3 py-2 rounded text-sm transition-colors flex items-center justify-center gap-1.5 ${
                   type === 'watchlist'
                     ? 'bg-blue-600 text-white'
                     : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300'
                 }`}
               >
-                👁️ Watchlist
+                <Eye className="w-4 h-4" />
+                <span>Watchlist</span>
               </button>
             </div>
           </div>
@@ -325,12 +329,22 @@ export default function StockTickerWidget({ config, onConfigChange }) {
     <div className="h-full flex flex-col">
       <div className="flex items-center justify-between mb-2">
         <div className="flex flex-col">
-          <span className="text-xs text-gray-500 dark:text-gray-400">
+          <span className="text-xs text-gray-500 dark:text-gray-400 flex items-center gap-1.5">
             {loading ? 'Updating...' : error ? 'Error' : (
               <>
-                {portfolioHoldings.length > 0 && `💼 ${portfolioHoldings.length}`}
-                {portfolioHoldings.length > 0 && watchlistHoldings.length > 0 && ' • '}
-                {watchlistHoldings.length > 0 && `👁️ ${watchlistHoldings.length}`}
+                {portfolioHoldings.length > 0 && (
+                  <span className="flex items-center gap-0.5">
+                    <Briefcase className="w-3 h-3" />
+                    {portfolioHoldings.length}
+                  </span>
+                )}
+                {portfolioHoldings.length > 0 && watchlistHoldings.length > 0 && <span>•</span>}
+                {watchlistHoldings.length > 0 && (
+                  <span className="flex items-center gap-0.5">
+                    <Eye className="w-3 h-3" />
+                    {watchlistHoldings.length}
+                  </span>
+                )}
               </>
             )}
           </span>
@@ -377,7 +391,10 @@ export default function StockTickerWidget({ config, onConfigChange }) {
               onClick={() => setShowGraph(true)}
               className="w-full px-2 py-2 text-xs text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors flex items-center justify-between"
             >
-              <span>📈 Show Portfolio Graph</span>
+              <span className="flex items-center gap-1">
+                <TrendingUp className="w-3.5 h-3.5" />
+                Show Portfolio Graph
+              </span>
               <span>▼</span>
             </button>
           ) : (
@@ -430,7 +447,10 @@ export default function StockTickerWidget({ config, onConfigChange }) {
       {portfolioHoldings.length > 0 && (
         <div className="pt-2 mt-2 border-t border-gray-200 dark:border-gray-700">
           <div className="flex items-center justify-between">
-            <span className="text-xs text-gray-500 dark:text-gray-400">💼 Portfolio Value</span>
+            <span className="text-xs text-gray-500 dark:text-gray-400 flex items-center gap-1">
+              <Briefcase className="w-3 h-3" />
+              Portfolio Value
+            </span>
             <span className="font-semibold text-gray-800 dark:text-gray-200">
               {formatCurrency(totalValue)}
             </span>

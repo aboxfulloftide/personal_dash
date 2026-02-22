@@ -1,22 +1,25 @@
 import { useState, useEffect, useRef } from 'react';
 import { useWidgetData } from '../../hooks/useWidgetData';
 import { MapContainer, TileLayer, useMap } from 'react-leaflet';
+import { Sunrise, Sunset, Sun, Moon, Cloud, CloudSun, CloudRain, CloudSnow, CloudLightning, AlertTriangle } from 'lucide-react';
 import 'leaflet/dist/leaflet.css';
 import api from '../../services/api';
 
-const WEATHER_ICONS = {
-  sunny: '☀️',
-  partly_cloudy: '⛅',
-  cloudy: '☁️',
-  rainy: '🌧️',
-  snowy: '❄️',
-  stormy: '⛈️',
+const WEATHER_ICON_MAP = {
+  sunny: { icon: Sun, color: 'text-yellow-500 dark:text-yellow-400' },
+  partly_cloudy: { icon: CloudSun, color: 'text-orange-400 dark:text-orange-300' },
+  cloudy: { icon: Cloud, color: 'text-gray-500 dark:text-gray-400' },
+  rainy: { icon: CloudRain, color: 'text-blue-500 dark:text-blue-400' },
+  snowy: { icon: CloudSnow, color: 'text-cyan-400 dark:text-cyan-300' },
+  stormy: { icon: CloudLightning, color: 'text-purple-600 dark:text-purple-400' },
 };
 
 function WeatherIcon({ icon, size = 'large' }) {
-  const emoji = WEATHER_ICONS[icon] || '☁️';
-  const sizeClass = size === 'large' ? 'text-5xl' : size === 'small' ? 'text-lg' : 'text-sm';
-  return <span className={sizeClass}>{emoji}</span>;
+  const weatherConfig = WEATHER_ICON_MAP[icon] || WEATHER_ICON_MAP.cloudy;
+  const IconComponent = weatherConfig.icon;
+  const sizeClass = size === 'large' ? 'w-12 h-12' : size === 'small' ? 'w-5 h-5' : 'w-4 h-4';
+
+  return <IconComponent className={`${sizeClass} ${weatherConfig.color}`} />;
 }
 
 function SunTimes({ sunTimes }) {
@@ -44,7 +47,7 @@ function SunTimes({ sunTimes }) {
     const secondsUntilSunset = sunsetTime - now;
     timeUntilTransition = formatTimeRemaining(secondsUntilSunset, "sunset");
 
-    indicatorEmoji = "☀️";
+    indicatorEmoji = <Sun className="w-3 h-3 text-yellow-500 drop-shadow-lg" />;
     gradientClass = "bg-gradient-to-r from-orange-400 via-yellow-300 to-orange-400";
   } else {
     // NIGHT MODE: Show moon progress from sunset to next sunrise
@@ -61,7 +64,7 @@ function SunTimes({ sunTimes }) {
     const secondsUntilSunrise = nextSunrise - now;
     timeUntilTransition = formatTimeRemaining(secondsUntilSunrise, "sunrise");
 
-    indicatorEmoji = "🌙";
+    indicatorEmoji = <Moon className="w-3 h-3 text-indigo-300 drop-shadow-lg" />;
     gradientClass = "bg-gradient-to-r from-indigo-600 via-purple-500 to-indigo-600";
   }
 
@@ -69,11 +72,11 @@ function SunTimes({ sunTimes }) {
     <div className="px-2 py-2 border-t border-gray-200 dark:border-gray-700">
       <div className="flex justify-between items-center text-xs mb-2">
         <div className="flex items-center gap-1">
-          <span>🌅</span>
+          <Sunrise className="w-4 h-4 text-orange-500 dark:text-orange-400" />
           <span className="text-gray-700 dark:text-gray-300">{sunTimes.sunrise}</span>
         </div>
         <div className="flex items-center gap-1">
-          <span>🌆</span>
+          <Sunset className="w-4 h-4 text-orange-600 dark:text-orange-500" />
           <span className="text-gray-700 dark:text-gray-300">{sunTimes.sunset}</span>
         </div>
       </div>
@@ -92,9 +95,9 @@ function SunTimes({ sunTimes }) {
         {/* Sun/Moon indicator */}
         <div
           className="absolute top-1/2 -translate-y-1/2 transition-all duration-500 flex items-center justify-center"
-          style={{ left: `calc(${progress}% - 8px)` }}
+          style={{ left: `calc(${progress}% - 6px)` }}
         >
-          <span className="text-sm drop-shadow-lg">{indicatorEmoji}</span>
+          {indicatorEmoji}
         </div>
       </div>
     </div>
@@ -115,6 +118,60 @@ function formatTimeRemaining(seconds, eventName) {
   }
 }
 
+function MoonPhaseIcon({ phaseName, illumination }) {
+  // Custom SVG moon phase icons in outline style
+  const moonPhases = {
+    'New Moon': (
+      <svg className="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+        <circle cx="12" cy="12" r="9" className="text-gray-400 dark:text-gray-500" />
+      </svg>
+    ),
+    'Waxing Crescent': (
+      <svg className="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+        <circle cx="12" cy="12" r="9" className="text-gray-400 dark:text-gray-500" />
+        <path d="M12 3 A 9 9 0 0 1 12 21 A 6 6 0 0 0 12 3" fill="currentColor" className="text-gray-300 dark:text-gray-600" />
+      </svg>
+    ),
+    'First Quarter': (
+      <svg className="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+        <circle cx="12" cy="12" r="9" className="text-gray-400 dark:text-gray-500" />
+        <path d="M12 3 A 9 9 0 0 1 12 21 Z" fill="currentColor" className="text-gray-300 dark:text-gray-600" />
+      </svg>
+    ),
+    'Waxing Gibbous': (
+      <svg className="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+        <circle cx="12" cy="12" r="9" className="text-gray-400 dark:text-gray-500" />
+        <path d="M12 3 A 9 9 0 0 1 12 21 A 3 3 0 0 0 12 3" fill="currentColor" className="text-gray-300 dark:text-gray-600" />
+      </svg>
+    ),
+    'Full Moon': (
+      <svg className="w-6 h-6" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" strokeWidth="2">
+        <circle cx="12" cy="12" r="9" className="text-gray-300 dark:text-gray-600" />
+      </svg>
+    ),
+    'Waning Gibbous': (
+      <svg className="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+        <circle cx="12" cy="12" r="9" className="text-gray-400 dark:text-gray-500" />
+        <path d="M12 3 A 9 9 0 0 0 12 21 A 3 3 0 0 1 12 3" fill="currentColor" className="text-gray-300 dark:text-gray-600" />
+      </svg>
+    ),
+    'Last Quarter': (
+      <svg className="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+        <circle cx="12" cy="12" r="9" className="text-gray-400 dark:text-gray-500" />
+        <path d="M12 3 A 9 9 0 0 0 12 21 Z" fill="currentColor" className="text-gray-300 dark:text-gray-600" />
+      </svg>
+    ),
+    'Waning Crescent': (
+      <svg className="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+        <circle cx="12" cy="12" r="9" className="text-gray-400 dark:text-gray-500" />
+        <path d="M12 3 A 9 9 0 0 0 12 21 A 6 6 0 0 1 12 3" fill="currentColor" className="text-gray-300 dark:text-gray-600" />
+      </svg>
+    ),
+  };
+
+  return moonPhases[phaseName] || moonPhases['New Moon'];
+}
+
 function MoonPhase({ moonPhase }) {
   if (!moonPhase) return null;
 
@@ -122,7 +179,7 @@ function MoonPhase({ moonPhase }) {
     <div className="px-2 py-2 border-t border-gray-200 dark:border-gray-700">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <span className="text-2xl">{moonPhase.phase_emoji}</span>
+          <MoonPhaseIcon phaseName={moonPhase.phase_name} illumination={moonPhase.illumination} />
           <div className="flex flex-col">
             <span className="text-xs font-medium text-gray-700 dark:text-gray-300">
               {moonPhase.phase_name}
@@ -142,7 +199,9 @@ function CurrentConditions({ current, units }) {
 
   return (
     <div className="text-center py-1">
-      <WeatherIcon icon={current.icon} size="large" />
+      <div className="flex justify-center">
+        <WeatherIcon icon={current.icon} size="large" />
+      </div>
       <div className="text-3xl font-bold text-gray-800 dark:text-gray-100 mt-1">
         {current.temp !== null ? `${Math.round(current.temp)}${tempUnit}` : '—'}
       </div>
@@ -518,7 +577,7 @@ function WeatherAlertsList({ alerts }) {
   return (
     <div className="border-t border-gray-200 dark:border-gray-700 mt-2 pt-2">
       <div className="text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1 flex items-center gap-1">
-        <span>⚠️</span>
+        <AlertTriangle className="w-4 h-4 text-amber-500" />
         <span>Active Weather Alerts</span>
       </div>
       {alerts.map((alert, idx) => {
