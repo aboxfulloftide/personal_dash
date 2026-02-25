@@ -1,22 +1,52 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import api from '../../services/api';
 
-export default function ReminderModal({ isOpen, onClose, onSaved }) {
-  const [formData, setFormData] = useState({
-    title: '',
-    notes: '',
-    recurrence_type: 'day_of_week',
-    interval_value: 1,
-    interval_unit: 'days',
-    days_of_week: [],
-    reminder_time: '09:00',
-    start_date: new Date().toISOString().split('T')[0],
-    carry_over: true,
-    is_active: true,
-  });
+const defaultFormData = {
+  title: '',
+  notes: '',
+  recurrence_type: 'day_of_week',
+  interval_value: 1,
+  interval_unit: 'days',
+  days_of_week: [],
+  reminder_time: '09:00',
+  start_date: new Date().toISOString().split('T')[0],
+  carry_over: true,
+  is_active: true,
+};
 
+export default function ReminderModal({ isOpen, onClose, onSaved, reminder = null }) {
+  const isEdit = !!reminder;
+  const [formData, setFormData] = useState(defaultFormData);
   const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const [error, setError] = useState(null);
+
+  // Populate form when reminder prop changes
+  useEffect(() => {
+    if (isOpen && reminder) {
+      const daysOfWeek = reminder.days_of_week
+        ? reminder.days_of_week.split(',').map(Number)
+        : [];
+      setFormData({
+        title: reminder.title || '',
+        notes: reminder.notes || '',
+        recurrence_type: reminder.recurrence_type || 'day_of_week',
+        interval_value: reminder.interval_value || 1,
+        interval_unit: reminder.interval_unit || 'days',
+        days_of_week: daysOfWeek,
+        reminder_time: reminder.reminder_time || '09:00',
+        start_date: reminder.start_date || new Date().toISOString().split('T')[0],
+        carry_over: reminder.carry_over ?? true,
+        is_active: reminder.is_active ?? true,
+      });
+    } else if (isOpen && !reminder) {
+      setFormData({ ...defaultFormData, start_date: new Date().toISOString().split('T')[0] });
+    }
+    setError(null);
+    setConfirmDelete(false);
+  }, [isOpen, reminder]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -24,7 +54,6 @@ export default function ReminderModal({ isOpen, onClose, onSaved }) {
     setSaving(true);
 
     try {
-      // Prepare data for API
       const submitData = {
         ...formData,
         days_of_week: formData.recurrence_type === 'day_of_week'
@@ -39,14 +68,38 @@ export default function ReminderModal({ isOpen, onClose, onSaved }) {
         reminder_time: formData.reminder_time || null,
       };
 
-      await api.post('/reminders/', submitData);
+      if (isEdit) {
+        await api.patch(`/reminders/${reminder.id}`, submitData);
+      } else {
+        await api.post('/reminders/', submitData);
+      }
       onSaved();
       onClose();
     } catch (err) {
-      console.error('Failed to create reminder:', err);
-      setError(err.response?.data?.detail || 'Failed to create reminder');
+      console.error(`Failed to ${isEdit ? 'update' : 'create'} reminder:`, err);
+      setError(err.response?.data?.detail || `Failed to ${isEdit ? 'update' : 'create'} reminder`);
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!confirmDelete) {
+      setConfirmDelete(true);
+      return;
+    }
+    setDeleting(true);
+    setError(null);
+    try {
+      await api.delete(`/reminders/${reminder.id}`);
+      onSaved();
+      onClose();
+    } catch (err) {
+      console.error('Failed to delete reminder:', err);
+      setError(err.response?.data?.detail || 'Failed to delete reminder');
+    } finally {
+      setDeleting(false);
+      setConfirmDelete(false);
     }
   };
 
@@ -65,12 +118,12 @@ export default function ReminderModal({ isOpen, onClose, onSaved }) {
 
   if (!isOpen) return null;
 
-  return (
+  return createPortal(
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
       <div className="bg-white dark:bg-gray-800 rounded-lg max-w-md w-full max-h-[90vh] overflow-y-auto">
         <form onSubmit={handleSubmit} className="p-6">
           <h2 className="text-xl font-semibold mb-4 text-gray-900 dark:text-gray-100">
-            Add Reminder
+            {isEdit ? 'Edit Reminder' : 'Add Reminder'}
           </h2>
 
           {error && (
@@ -220,26 +273,45 @@ export default function ReminderModal({ isOpen, onClose, onSaved }) {
             </p>
           </div>
 
+          {/* Delete button (edit mode only) */}
+          {isEdit && (
+            <div className="mb-4 pt-2 border-t border-gray-200 dark:border-gray-700">
+              <button
+                type="button"
+                onClick={handleDelete}
+                className={`w-full px-4 py-2 rounded text-sm ${
+                  confirmDelete
+                    ? 'bg-red-600 hover:bg-red-700 text-white'
+                    : 'bg-red-50 hover:bg-red-100 dark:bg-red-900/20 dark:hover:bg-red-900/40 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800'
+                }`}
+                disabled={deleting}
+              >
+                {deleting ? 'Deleting...' : confirmDelete ? 'Confirm Delete' : 'Delete Reminder'}
+              </button>
+            </div>
+          )}
+
           {/* Actions */}
           <div className="flex gap-2">
             <button
               type="button"
               onClick={onClose}
               className="flex-1 px-4 py-2 bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-900 dark:text-gray-100 rounded"
-              disabled={saving}
+              disabled={saving || deleting}
             >
               Cancel
             </button>
             <button
               type="submit"
               className="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded disabled:opacity-50"
-              disabled={saving}
+              disabled={saving || deleting}
             >
-              {saving ? 'Saving...' : 'Create'}
+              {saving ? 'Saving...' : isEdit ? 'Save' : 'Create'}
             </button>
           </div>
         </form>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
