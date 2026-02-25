@@ -108,15 +108,18 @@ def get_events(db: Session, package_id: int) -> list[PackageEvent]:
 def mark_package_delivered_by_tracking(
     db: Session,
     user_id: int,
-    tracking_number: str
+    tracking_number: str,
+    delivery_subject: str = None
 ) -> Package | None:
     """
     Find a package by tracking number and mark it as delivered.
+    Falls back to subject similarity matching if no exact tracking match is found.
     Returns the updated package if found, None otherwise.
     """
     print(f"[DEBUG] Attempting to mark package delivered:")
     print(f"  User ID: {user_id}")
     print(f"  Tracking number: {tracking_number}")
+    print(f"  Delivery subject: {delivery_subject}")
 
     # Case-insensitive search for tracking number
     result = db.execute(
@@ -127,6 +130,48 @@ def mark_package_delivered_by_tracking(
         )
     )
     packages = list(result.scalars().all())
+
+    # If no exact match and we have a subject, try subject similarity matching
+    if not packages and delivery_subject:
+        print(f"  ℹ No exact tracking match, trying subject similarity...")
+
+        # Import here to avoid circular imports
+        from app.core.scheduler import calculate_subject_similarity
+
+        # Get all undelivered packages for this user from the last 14 days
+        from datetime import timedelta
+        two_weeks_ago = datetime.now() - timedelta(days=14)
+
+        result = db.execute(
+            select(Package).where(
+                Package.user_id == user_id,
+                Package.dismissed == False,
+                Package.delivered == False,
+                Package.created_at >= two_weeks_ago,
+                Package.email_subject.isnot(None),
+            )
+        )
+        candidate_packages = list(result.scalars().all())
+
+        print(f"  Checking {len(candidate_packages)} undelivered packages for subject similarity")
+
+        best_match = None
+        best_similarity = 0.0
+
+        for pkg in candidate_packages:
+            similarity = calculate_subject_similarity(pkg.email_subject, delivery_subject)
+            print(f"    Package #{pkg.id} '{pkg.email_subject[:50]}...' similarity: {similarity:.0%}")
+
+            if similarity > best_similarity:
+                best_similarity = similarity
+                best_match = pkg
+
+        # Use a 60% threshold for delivery matching (slightly lower than duplicate detection's 70%)
+        if best_match and best_similarity > 0.6:
+            print(f"  ✓ Found match by subject similarity ({best_similarity:.0%}): {best_match.description}")
+            packages = [best_match]
+        else:
+            print(f"  ✗ No package matched by subject (best similarity: {best_similarity:.0%})")
 
     if packages:
         if len(packages) > 1:

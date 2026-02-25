@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useWidgetData } from '../../hooks/useWidgetData';
 
 function CalendarInstructions() {
@@ -348,6 +348,8 @@ export default function CalendarWidget({ config }) {
   const defaultView = config.default_view || 'week';
   const [view, setView] = useState(defaultView);
   const [userOverrodeView, setUserOverrodeView] = useState(false);
+  // Prevent auto-selection from re-firing on follow-up fetches (avoids week↔month cycle)
+  const autoViewApplied = useRef(false);
 
   // For month view, track selected month
   const getCurrentMonth = () => {
@@ -370,15 +372,17 @@ export default function CalendarWidget({ config }) {
       calendars: config.calendars || '',
       view: view,
       month: view === 'month' ? selectedMonth : undefined,
-      auto_fallback: !userOverrodeView,
+      // Disable auto_fallback after initial selection to prevent week↔month cycle
+      auto_fallback: !userOverrodeView && !autoViewApplied.current,
     },
     refreshInterval: config.refresh_interval || 600,
     enabled: !!config.calendars,
   });
 
-  // Sync view with backend's auto-selected view (only when not manually overridden)
+  // Sync view with backend's auto-selected view (only once per session)
   useEffect(() => {
-    if (data?.auto_selected_view && !userOverrodeView) {
+    if (data?.auto_selected_view && !userOverrodeView && !autoViewApplied.current) {
+      autoViewApplied.current = true;
       setView(data.auto_selected_view);
     }
   }, [data?.auto_selected_view, userOverrodeView]);
@@ -427,6 +431,7 @@ export default function CalendarWidget({ config }) {
   const handleMonthChange = (newMonth) => {
     setSelectedMonth(newMonth);
     setUserOverrodeView(false);
+    autoViewApplied.current = false; // Allow re-auto-selection for new month
   };
 
   // Get event counts for tabs

@@ -54,9 +54,13 @@ TRACKING_PATTERNS = {
         r'\b(1Z[A-Z0-9]{16})\b',  # 1Z followed by 16 alphanumeric
     ],
     "FedEx": [
-        r'\b(\d{12})\b',  # 12 digits
-        r'\b(\d{15})\b',  # 15 digits
-        r'\b(\d{20})\b',  # 20 digits (FedEx Ground)
+        r'\b(\d{15})\b',  # 15 digits (FedEx Express)
+        r'\b(\d{20,22})\b',  # 20-22 digits (FedEx Ground / SmartPost)
+        # 12-digit requires nearby FEDEX context to avoid false positives
+        # (order numbers, SKUs, member IDs are often 12 digits)
+        # Text is uppercased before matching so no inline flag needed
+        r'(?:FEDEX|FED\s*EX)[^\n]{0,80}?\b(\d{12})\b',
+        r'\b(\d{12})\b[^\n]{0,80}?(?:FEDEX|FED\s*EX)',
     ],
     "Amazon": [
         r'\b(TBA\d{12})\b',  # TBA followed by 12 digits
@@ -292,7 +296,14 @@ def extract_order_url(text: str, sender: str = '') -> Optional[str]:
                 'unsubscribe', 'preferences', 'facebook.com', 'twitter.com',
                 'instagram.com', 'linkedin.com', 'youtube.com', 'help.',
                 'support.', 'privacy', 'terms', 'docs.google.com',
-                'mailto:', 'tel:', 'javascript:'
+                'mailto:', 'tel:', 'javascript:',
+                # Email marketing trackers (open pixels and click redirects)
+                # These are NOT package tracking URLs
+                'emailtracking.', 'email-tracking.', 'click.', 'open.',
+                'trk.', 'track.email', '/tracking/1/open', '/tracking/1/click',
+                'email-messaging.com', 'emailmessaging.com',
+                'sendgrid.net', 'mandrillapp.com', 'mailchimp.com',
+                'klaviyo.com', 'constantcontact.com', 'salesforce.com/tracking',
             ]
 
             if any(skip in url.lower() for skip in skip_domains):

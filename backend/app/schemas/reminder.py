@@ -71,7 +71,7 @@ class ReminderInstanceBase(BaseModel):
     due_date: date
     due_time: Optional[time] = None
     instance_number: Optional[int] = None
-    status: str = Field(default="pending", description="Status: 'pending', 'dismissed', 'missed'")
+    status: str = Field(default="pending", description="Status: 'pending', 'dismissed', 'acknowledged', 'missed'")
     is_overdue: bool = Field(default=False, description="Is this a carried-over reminder?")
 
 
@@ -100,7 +100,7 @@ class ReminderInstanceResponse(ReminderInstanceInDB):
 
 class ReminderInstanceUpdate(BaseModel):
     """Schema for updating a reminder instance."""
-    status: Optional[str] = Field(None, description="Status: 'pending', 'dismissed', 'missed'")
+    status: Optional[str] = Field(None, description="Status: 'pending', 'dismissed', 'acknowledged', 'missed'")
 
 
 # ===== Combined Schemas for Dashboard Display =====
@@ -125,4 +125,5 @@ class RemindersWidgetResponse(BaseModel):
     reminders: list[TodayReminderDisplay]
     total_count: int
     pending_count: int
+    dismissed_count: int
     overdue_count: int

@@ -31,6 +31,8 @@ def create_reminder(
 ):
     """Create a new recurring reminder."""
     reminder = crud.create_reminder(db, current_user.id, reminder_data)
+    # Immediately generate today's instances so they appear without waiting for the scheduler
+    crud.generate_instances_for_reminder(db, reminder)
     return reminder
 
 
@@ -109,12 +111,14 @@ def get_today_reminders(
 
     total_count = len(reminders)
     pending_count = sum(1 for r in reminders if r.status == "pending")
+    dismissed_count = sum(1 for r in reminders if r.status == "dismissed")
     overdue_count = sum(1 for r in reminders if r.is_overdue and r.status == "pending")
 
     return RemindersWidgetResponse(
         reminders=reminders,
         total_count=total_count,
         pending_count=pending_count,
+        dismissed_count=dismissed_count,
         overdue_count=overdue_count,
     )
 
@@ -131,6 +135,36 @@ def dismiss_reminder(
         raise HTTPException(status_code=404, detail="Reminder instance not found")
 
     # Convert to response model with reminder title
+    from app.models.reminder import Reminder
+    reminder = db.query(Reminder).filter(Reminder.id == instance.reminder_id).first()
+
+    return ReminderInstanceResponse(
+        id=instance.id,
+        reminder_id=instance.reminder_id,
+        user_id=instance.user_id,
+        due_date=instance.due_date,
+        due_time=instance.due_time,
+        instance_number=instance.instance_number,
+        status=instance.status,
+        dismissed_at=instance.dismissed_at,
+        is_overdue=instance.is_overdue,
+        created_at=instance.created_at,
+        reminder_title=reminder.title if reminder else None,
+        reminder_notes=reminder.notes if reminder else None,
+    )
+
+
+@router.post("/instances/{instance_id}/acknowledge", response_model=ReminderInstanceResponse)
+def acknowledge_reminder(
+    instance_id: int,
+    current_user: CurrentActiveUser,
+    db: Session = Depends(get_db),
+):
+    """Acknowledge a reminder instance (removes it from display)."""
+    instance = crud.acknowledge_reminder_instance(db, instance_id, current_user.id)
+    if not instance:
+        raise HTTPException(status_code=404, detail="Reminder instance not found")
+
     from app.models.reminder import Reminder
     reminder = db.query(Reminder).filter(Reminder.id == instance.reminder_id).first()
 

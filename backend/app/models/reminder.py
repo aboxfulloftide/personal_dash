@@ -64,7 +64,7 @@ class ReminderInstance(Base):
     instance_number = Column(Integer, nullable=True)
 
     # Status
-    status = Column(String(20), default="pending")  # "pending", "dismissed", "missed"
+    status = Column(String(20), default="pending")  # "pending", "dismissed", "acknowledged", "missed"
     dismissed_at = Column(DateTime, nullable=True)
 
     # Is this overdue (carried over from previous day)?

@@ -423,9 +423,9 @@ async def reminders_midnight_reset_task():
 
     db = SessionLocal()
     try:
-        from app.crud.reminder import mark_missed_reminders, mark_overdue_reminders, create_reminder_instance, check_instance_exists
+        from app.crud.reminder import mark_missed_reminders, mark_overdue_reminders, generate_instances_for_reminder
         from app.models.reminder import Reminder
-        from datetime import date, time, timedelta
+        from datetime import date
 
         # Mark missed and overdue reminders from previous days
         missed_count = mark_missed_reminders(db)
@@ -436,7 +436,6 @@ async def reminders_midnight_reset_task():
 
         # Generate new instances for today
         today = date.today()
-        today_weekday = today.weekday()  # 0 = Monday, 6 = Sunday
 
         # Get all active reminders
         query = select(Reminder).where(
@@ -451,100 +450,10 @@ async def reminders_midnight_reset_task():
         instances_created = 0
         for reminder in active_reminders:
             try:
-                from app.schemas.reminder import ReminderInstanceCreate
-
-                # Check recurrence type
-                if reminder.recurrence_type == "day_of_week":
-                    # Day-of-week based reminder
-                    if reminder.days_of_week:
-                        days = [int(d.strip()) for d in reminder.days_of_week.split(",")]
-                        if today_weekday in days:
-                            # Check if instance already exists
-                            if not check_instance_exists(db, reminder.id, today, reminder.reminder_time):
-                                instance_data = ReminderInstanceCreate(
-                                    reminder_id=reminder.id,
-                                    due_date=today,
-                                    due_time=reminder.reminder_time,
-                                    status="pending",
-                                    is_overdue=False,
-                                )
-                                create_reminder_instance(db, reminder.user_id, instance_data)
-                                instances_created += 1
-                                logger.info(f"Created instance for day-of-week reminder {reminder.id}: {reminder.title}")
-
-                elif reminder.recurrence_type == "interval":
-                    # Interval-based reminder
-                    if reminder.interval_unit == "hours":
-                        # Hourly reminders - create multiple instances for today
-                        hours_per_day = 24
-                        interval = reminder.interval_value
-                        instances_per_day = hours_per_day // interval
-
-                        for i in range(instances_per_day):
-                            hour = i * interval
-                            due_time = time(hour=hour, minute=0, second=0)
-
-                            if not check_instance_exists(db, reminder.id, today, due_time, i + 1):
-                                instance_data = ReminderInstanceCreate(
-                                    reminder_id=reminder.id,
-                                    due_date=today,
-                                    due_time=due_time,
-                                    instance_number=i + 1,
-                                    status="pending",
-                                    is_overdue=False,
-                                )
-                                create_reminder_instance(db, reminder.user_id, instance_data)
-                                instances_created += 1
-
-                    elif reminder.interval_unit == "days":
-                        # Daily interval (every N days)
-                        days_since_start = (today - reminder.start_date).days
-                        if days_since_start % reminder.interval_value == 0:
-                            if not check_instance_exists(db, reminder.id, today, reminder.reminder_time):
-                                instance_data = ReminderInstanceCreate(
-                                    reminder_id=reminder.id,
-                                    due_date=today,
-                                    due_time=reminder.reminder_time,
-                                    status="pending",
-                                    is_overdue=False,
-                                )
-                                create_reminder_instance(db, reminder.user_id, instance_data)
-                                instances_created += 1
-                                logger.info(f"Created instance for daily interval reminder {reminder.id}: {reminder.title}")
-
-                    elif reminder.interval_unit == "weeks":
-                        # Weekly interval (every N weeks)
-                        days_since_start = (today - reminder.start_date).days
-                        weeks_since_start = days_since_start // 7
-                        if weeks_since_start % reminder.interval_value == 0 and today.weekday() == reminder.start_date.weekday():
-                            if not check_instance_exists(db, reminder.id, today, reminder.reminder_time):
-                                instance_data = ReminderInstanceCreate(
-                                    reminder_id=reminder.id,
-                                    due_date=today,
-                                    due_time=reminder.reminder_time,
-                                    status="pending",
-                                    is_overdue=False,
-                                )
-                                create_reminder_instance(db, reminder.user_id, instance_data)
-                                instances_created += 1
-                                logger.info(f"Created instance for weekly interval reminder {reminder.id}: {reminder.title}")
-
-                    elif reminder.interval_unit == "months":
-                        # Monthly interval (every N months)
-                        months_since_start = (today.year - reminder.start_date.year) * 12 + (today.month - reminder.start_date.month)
-                        if months_since_start % reminder.interval_value == 0 and today.day == reminder.start_date.day:
-                            if not check_instance_exists(db, reminder.id, today, reminder.reminder_time):
-                                instance_data = ReminderInstanceCreate(
-                                    reminder_id=reminder.id,
-                                    due_date=today,
-                                    due_time=reminder.reminder_time,
-                                    status="pending",
-                                    is_overdue=False,
-                                )
-                                create_reminder_instance(db, reminder.user_id, instance_data)
-                                instances_created += 1
-                                logger.info(f"Created instance for monthly interval reminder {reminder.id}: {reminder.title}")
-
+                created = generate_instances_for_reminder(db, reminder)
+                if created > 0:
+                    instances_created += created
+                    logger.info(f"Created {created} instance(s) for reminder {reminder.id}: {reminder.title}")
             except Exception as e:
                 logger.error(f"Error processing reminder {reminder.id}: {e}")
 
@@ -808,6 +717,85 @@ async def monitor_custom_widget_alerts_task():
     logger.info("Custom widget alerts monitoring completed")
 
 
+async def monitor_reminder_alerts_task():
+    """
+    Background task that checks for tripped (due/overdue) reminders and
+    triggers or clears widget-level alerts accordingly.  No cooldown —
+    alert persists until all reminders are handled.
+    Runs every 2 minutes.
+    """
+    logger.info("Starting reminder alerts monitoring")
+
+    db = SessionLocal()
+    try:
+        from app.crud.reminder import get_tripped_reminder_counts
+
+        query = select(DashboardLayout)
+        result = db.execute(query)
+        dashboards = list(result.scalars().all())
+
+        for dashboard in dashboards:
+            try:
+                if not dashboard.layout:
+                    continue
+
+                widgets = dashboard.layout.get("widgets", [])
+
+                for widget in widgets:
+                    if widget.get("type") != "reminders":
+                        continue
+
+                    widget_id = widget.get("id")
+                    if not widget_id:
+                        continue
+
+                    try:
+                        counts = get_tripped_reminder_counts(db, dashboard.user_id)
+
+                        if counts["total"] > 0:
+                            # Build message
+                            parts = []
+                            if counts["overdue"] > 0:
+                                parts.append(f"{counts['overdue']} overdue")
+                            if counts["due"] > 0:
+                                parts.append(f"{counts['due']} due")
+                            message = f"{counts['total']} reminder{'s' if counts['total'] != 1 else ''}: {', '.join(parts)}"
+
+                            severity = "warning" if counts["overdue"] > 0 else "info"
+
+                            # Only trigger if alert state actually changed
+                            current_active = widget.get("alert_active", False)
+                            current_message = widget.get("alert_message", "")
+
+                            if not current_active or current_message != message:
+                                trigger_widget_alert(
+                                    db=db,
+                                    user_id=dashboard.user_id,
+                                    widget_id=widget_id,
+                                    severity=severity,
+                                    message=message,
+                                )
+                                logger.info(f"Triggered {severity} reminder alert for widget {widget_id}: {message}")
+                        else:
+                            # No tripped reminders — clear alert if active
+                            if widget.get("alert_active"):
+                                acknowledge_widget_alert(db, dashboard.user_id, widget_id)
+                                logger.info(f"Cleared reminder alert for widget {widget_id}")
+
+                    except Exception as e:
+                        logger.error(f"Error checking reminder alerts for widget {widget_id}: {e}")
+
+            except Exception as e:
+                logger.error(f"Error checking reminder alerts for user {dashboard.user_id}: {e}")
+
+    except Exception as e:
+        logger.error(f"Error in reminder alerts monitoring task: {e}")
+    finally:
+        db.close()
+
+    logger.info("Reminder alerts monitoring completed")
+
+
 def start_scheduler():
     """Start the background scheduler."""
     global scheduler
@@ -873,6 +861,15 @@ def start_scheduler():
         replace_existing=True,
     )
 
+    # Monitor reminder alerts every 2 minutes
+    scheduler.add_job(
+        monitor_reminder_alerts_task,
+        trigger=IntervalTrigger(minutes=2),
+        id="monitor_reminder_alerts",
+        name="Monitor due/overdue reminders and trigger widget alerts",
+        replace_existing=True,
+    )
+
     # Sync Garmin data every 6 hours
     scheduler.add_job(
         sync_garmin_task,
@@ -883,7 +880,7 @@ def start_scheduler():
     )
 
     scheduler.start()
-    logger.info("Background scheduler started - email auto-scan, package cleanup, speed test cleanup, weather alerts monitoring, reminders, custom widget alerts, and Garmin sync enabled")
+    logger.info("Background scheduler started - email auto-scan, package cleanup, speed test cleanup, weather alerts monitoring, reminders, reminder alerts, custom widget alerts, and Garmin sync enabled")
 
 
 def stop_scheduler():

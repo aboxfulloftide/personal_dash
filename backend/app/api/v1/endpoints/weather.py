@@ -53,7 +53,6 @@ class SunTimes(BaseModel):
 
 class MoonPhase(BaseModel):
     phase_name: str       # "Waxing Gibbous", "Full Moon", etc.
-    phase_emoji: str      # "🌔", "🌕", etc.
     illumination: int     # 0-100 percentage
     phase_value: float    # 0.0-1.0 (for debugging/future use)
 
@@ -225,7 +224,7 @@ def calculate_moon_phase(dt: datetime | None = None) -> MoonPhase:
     Reference: January 6, 2000 was a new moon.
 
     Returns:
-        MoonPhase with name, emoji, illumination percentage, and phase value (0.0-1.0)
+        MoonPhase with name, illumination percentage, and phase value (0.0-1.0)
     """
     if dt is None:
         dt = datetime.now()
@@ -246,36 +245,27 @@ def calculate_moon_phase(dt: datetime | None = None) -> MoonPhase:
     # Illumination peaks at 100% during full moon (phase = 0.5)
     illumination = int(100 * (1 - abs(2 * (phase - 0.5))))
 
-    # Determine phase name and emoji
+    # Determine phase name
     # Phase ranges based on typical lunar phase divisions
     if phase < 0.03 or phase >= 0.97:
         phase_name = "New Moon"
-        phase_emoji = "🌑"
     elif phase < 0.22:
         phase_name = "Waxing Crescent"
-        phase_emoji = "🌒"
     elif phase < 0.28:
         phase_name = "First Quarter"
-        phase_emoji = "🌓"
     elif phase < 0.47:
         phase_name = "Waxing Gibbous"
-        phase_emoji = "🌔"
     elif phase < 0.53:
         phase_name = "Full Moon"
-        phase_emoji = "🌕"
     elif phase < 0.72:
         phase_name = "Waning Gibbous"
-        phase_emoji = "🌖"
     elif phase < 0.78:
         phase_name = "Last Quarter"
-        phase_emoji = "🌗"
     else:  # 0.78 to 0.97
         phase_name = "Waning Crescent"
-        phase_emoji = "🌘"
 
     return MoonPhase(
         phase_name=phase_name,
-        phase_emoji=phase_emoji,
         illumination=illumination,
         phase_value=round(phase, 3),
     )

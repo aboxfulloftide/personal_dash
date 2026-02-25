@@ -182,6 +182,12 @@ def acknowledge_widget_alert(
     from app.crud.dashboard import acknowledge_widget_alert as crud_acknowledge_alert
     updated_widget = crud_acknowledge_alert(db, current_user.id, widget_id)
 
+    # If this is a custom widget, also acknowledge item-level alerts so the scheduler
+    # doesn't immediately re-trigger the alert on its next run.
+    if widget.get("type") == "custom_widget":
+        from app.crud.custom_widget import acknowledge_widget_items
+        acknowledge_widget_items(db, current_user.id, widget_id)
+
     return AlertResponse(
         success=True,
         widget_id=widget_id,

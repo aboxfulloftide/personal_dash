@@ -138,7 +138,7 @@ def get_instances_for_date(
             ReminderInstance.due_date == target_date
         )
     ).order_by(
-        ReminderInstance.due_time.asc().nullsfirst(),
+        ReminderInstance.due_time.asc(),
         ReminderInstance.created_at.asc()
     )
 
@@ -153,7 +153,7 @@ def get_instances_for_date(
             )
         ).order_by(
             ReminderInstance.due_date.asc(),
-            ReminderInstance.due_time.asc().nullsfirst()
+            ReminderInstance.due_time.asc()
         )
 
         # Combine both queries
@@ -178,6 +178,7 @@ def get_today_reminders_display(db: Session, user_id: int) -> list[TodayReminder
     ).where(
         and_(
             ReminderInstance.user_id == user_id,
+            ReminderInstance.status != "acknowledged",
             or_(
                 ReminderInstance.due_date == today,
                 and_(
@@ -189,7 +190,7 @@ def get_today_reminders_display(db: Session, user_id: int) -> list[TodayReminder
         )
     ).order_by(
         ReminderInstance.is_overdue.asc(),  # Non-overdue first
-        ReminderInstance.due_time.asc().nullsfirst(),
+        ReminderInstance.due_time.asc(),
         ReminderInstance.created_at.asc()
     )
 
@@ -216,6 +217,30 @@ def get_today_reminders_display(db: Session, user_id: int) -> list[TodayReminder
     return reminders_display
 
 
+def get_tripped_reminder_counts(db: Session, user_id: int) -> dict:
+    """
+    Count reminders that are currently "tripped" (due or overdue) and still
+    pending/dismissed (not acknowledged).  Returns {"total": int, "overdue": int, "due": int}.
+    """
+    now = datetime.now()
+    today = date.today()
+    current_time = now.time()
+
+    display = get_today_reminders_display(db, user_id)
+
+    overdue = 0
+    due = 0
+    for r in display:
+        if r.is_overdue:
+            overdue += 1
+        elif r.due_time is None or r.due_time <= current_time:
+            # No specific time means due all day; otherwise due if time has passed
+            due += 1
+        # else: future reminder today — not tripped yet
+
+    return {"total": overdue + due, "overdue": overdue, "due": due}
+
+
 def dismiss_reminder_instance(
     db: Session,
     instance_id: int,
@@ -227,6 +252,23 @@ def dismiss_reminder_instance(
         return None
 
     instance.status = "dismissed"
+    instance.dismissed_at = datetime.now()
+    db.commit()
+    db.refresh(instance)
+    return instance
+
+
+def acknowledge_reminder_instance(
+    db: Session,
+    instance_id: int,
+    user_id: int
+) -> Optional[ReminderInstance]:
+    """Acknowledge a reminder instance (removes it from display)."""
+    instance = get_reminder_instance(db, instance_id, user_id)
+    if not instance:
+        return None
+
+    instance.status = "acknowledged"
     instance.dismissed_at = datetime.now()
     db.commit()
     db.refresh(instance)
@@ -278,6 +320,105 @@ def check_instance_exists(
     return result.scalar_one_or_none() is not None
 
 
+# ===== Instance Generation =====
+
+
+def generate_instances_for_reminder(db: Session, reminder: "Reminder") -> int:
+    """
+    Generate today's instances for a single reminder if applicable.
+    Returns the number of instances created.
+    """
+    today = date.today()
+    today_weekday = today.weekday()
+
+    if not reminder.is_active or reminder.start_date > today:
+        return 0
+
+    instances_created = 0
+
+    if reminder.recurrence_type == "day_of_week":
+        if reminder.days_of_week:
+            days = [int(d.strip()) for d in reminder.days_of_week.split(",")]
+            if today_weekday in days:
+                if not check_instance_exists(db, reminder.id, today, reminder.reminder_time):
+                    instance_data = ReminderInstanceCreate(
+                        reminder_id=reminder.id,
+                        due_date=today,
+                        due_time=reminder.reminder_time,
+                        status="pending",
+                        is_overdue=False,
+                    )
+                    create_reminder_instance(db, reminder.user_id, instance_data)
+                    instances_created += 1
+
+    elif reminder.recurrence_type == "interval":
+        if reminder.interval_unit == "hours":
+            hours_per_day = 24
+            interval = reminder.interval_value
+            instances_per_day = hours_per_day // interval
+
+            for i in range(instances_per_day):
+                hour = i * interval
+                due_time = time(hour=hour, minute=0, second=0)
+
+                if not check_instance_exists(db, reminder.id, today, due_time, i + 1):
+                    instance_data = ReminderInstanceCreate(
+                        reminder_id=reminder.id,
+                        due_date=today,
+                        due_time=due_time,
+                        instance_number=i + 1,
+                        status="pending",
+                        is_overdue=False,
+                    )
+                    create_reminder_instance(db, reminder.user_id, instance_data)
+                    instances_created += 1
+
+        elif reminder.interval_unit == "days":
+            days_since_start = (today - reminder.start_date).days
+            if days_since_start % reminder.interval_value == 0:
+                if not check_instance_exists(db, reminder.id, today, reminder.reminder_time):
+                    instance_data = ReminderInstanceCreate(
+                        reminder_id=reminder.id,
+                        due_date=today,
+                        due_time=reminder.reminder_time,
+                        status="pending",
+                        is_overdue=False,
+                    )
+                    create_reminder_instance(db, reminder.user_id, instance_data)
+                    instances_created += 1
+
+        elif reminder.interval_unit == "weeks":
+            days_since_start = (today - reminder.start_date).days
+            weeks_since_start = days_since_start // 7
+            if weeks_since_start % reminder.interval_value == 0 and today.weekday() == reminder.start_date.weekday():
+                if not check_instance_exists(db, reminder.id, today, reminder.reminder_time):
+                    instance_data = ReminderInstanceCreate(
+                        reminder_id=reminder.id,
+                        due_date=today,
+                        due_time=reminder.reminder_time,
+                        status="pending",
+                        is_overdue=False,
+                    )
+                    create_reminder_instance(db, reminder.user_id, instance_data)
+                    instances_created += 1
+
+        elif reminder.interval_unit == "months":
+            months_since_start = (today.year - reminder.start_date.year) * 12 + (today.month - reminder.start_date.month)
+            if months_since_start % reminder.interval_value == 0 and today.day == reminder.start_date.day:
+                if not check_instance_exists(db, reminder.id, today, reminder.reminder_time):
+                    instance_data = ReminderInstanceCreate(
+                        reminder_id=reminder.id,
+                        due_date=today,
+                        due_time=reminder.reminder_time,
+                        status="pending",
+                        is_overdue=False,
+                    )
+                    create_reminder_instance(db, reminder.user_id, instance_data)
+                    instances_created += 1
+
+    return instances_created
+
+
 # ===== Midnight Reset Operations =====
 
 
@@ -295,7 +436,7 @@ def mark_missed_reminders(db: Session) -> int:
     ).where(
         and_(
             ReminderInstance.due_date < date.today(),
-            ReminderInstance.status == "pending",
+            ReminderInstance.status.in_(["pending", "dismissed"]),
             Reminder.carry_over == False
         )
     )
@@ -325,7 +466,7 @@ def mark_overdue_reminders(db: Session) -> int:
     ).where(
         and_(
             ReminderInstance.due_date < date.today(),
-            ReminderInstance.status == "pending",
+            ReminderInstance.status.in_(["pending", "dismissed"]),
             ReminderInstance.is_overdue == False,
             Reminder.carry_over == True
         )

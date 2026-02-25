@@ -168,9 +168,8 @@ def calculate_portfolio_history(
             "display_mode": "daily"
         }
 
-    # Determine cutoff date and display mode
+    # Determine cutoff date (how far back to look for data)
     cutoff = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=days)
-    display_mode = "weekly" if days > 30 else "daily"
 
     # Extract symbols/coins and create holdings map
     if is_crypto:
@@ -222,21 +221,41 @@ def calculate_portfolio_history(
         # Keep updating - last one wins (most recent price of the day)
         daily_prices[date_str][identifier] = price
 
-    # Forward-fill missing prices
-    sorted_dates = sorted(daily_prices.keys())
+    # Generate complete date range from cutoff to today
+    # For stocks, skip weekends (market closed). For crypto, include all days (24/7 market)
+    start_date = cutoff.date()
+    end_date = datetime.now().date()
+    all_dates = []
+    current_date = start_date
+
+    while current_date <= end_date:
+        # Skip weekends for stocks (0=Monday, 6=Sunday)
+        if is_crypto or current_date.weekday() < 5:  # Include Mon-Fri for stocks, all days for crypto
+            all_dates.append(str(current_date))
+        current_date += timedelta(days=1)
+
+    # Forward-fill missing prices across all dates
     last_known_prices = {}
 
-    for date_str in sorted_dates:
+    for date_str in all_dates:
+        # Update last known prices with any new data for this date
+        if date_str in daily_prices:
+            for identifier in identifiers:
+                if identifier in daily_prices[date_str]:
+                    last_known_prices[identifier] = daily_prices[date_str][identifier]
+
+        # Fill in missing prices using last known values
+        if date_str not in daily_prices:
+            daily_prices[date_str] = {}
+
         for identifier in identifiers:
-            if identifier in daily_prices[date_str]:
-                last_known_prices[identifier] = daily_prices[date_str][identifier]
-            elif identifier in last_known_prices:
+            if identifier not in daily_prices[date_str] and identifier in last_known_prices:
                 daily_prices[date_str][identifier] = last_known_prices[identifier]
 
     # Calculate portfolio value for each date (only dates where all holdings have prices)
     portfolio_values = []
-    for date_str in sorted_dates:
-        # Skip if not all holdings have prices for this date
+    for date_str in all_dates:
+        # Skip if not all holdings have prices for this date yet
         if not all(identifier in daily_prices[date_str] for identifier in identifiers):
             continue
 
@@ -254,20 +273,27 @@ def calculate_portfolio_history(
             "current_value": 0.0,
             "starting_value": 0.0,
             "total_gain_loss_pct": 0.0,
-            "display_mode": display_mode
+            "display_mode": "daily"
         }
+
+    # Determine display mode based on actual data span
+    actual_days = (datetime.strptime(portfolio_values[-1][0], "%Y-%m-%d").date() -
+                   datetime.strptime(portfolio_values[0][0], "%Y-%m-%d").date()).days
+    display_mode = "weekly" if actual_days > 30 else "daily"
 
     # Aggregate to weekly if needed
     if display_mode == "weekly":
         weekly_values = []
-        i = 0
-        while i < len(portfolio_values):
-            # Take first value of each week (every 7 days)
-            weekly_values.append(portfolio_values[i])
-            i += 7
-        # Always include the last value if not already included
-        if portfolio_values[-1] not in weekly_values:
-            weekly_values.append(portfolio_values[-1])
+        current_week_start = None
+
+        for date_str, total_value in portfolio_values:
+            date_obj = datetime.strptime(date_str, "%Y-%m-%d").date()
+
+            # Start a new week if needed
+            if current_week_start is None or (date_obj - current_week_start).days >= 7:
+                current_week_start = date_obj
+                weekly_values.append((date_str, total_value))
+
         portfolio_values = weekly_values
 
     # Calculate percentage changes
