@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import GridLayout from 'react-grid-layout';
 import 'react-grid-layout/css/styles.css';
 import 'react-resizable/css/styles.css';
@@ -18,8 +18,16 @@ export default function DashboardGrid({
   isEditing
 }) {
   const [containerWidth, setContainerWidth] = useState(1200);
+  const containerRef = useRef(null);
+  const observerRef = useRef(null);
 
   const handleContainerRef = useCallback((node) => {
+    // Clean up previous observer
+    if (observerRef.current) {
+      observerRef.current.disconnect();
+      observerRef.current = null;
+    }
+    containerRef.current = node;
     if (node) {
       const resizeObserver = new ResizeObserver((entries) => {
         for (const entry of entries) {
@@ -27,8 +35,17 @@ export default function DashboardGrid({
         }
       });
       resizeObserver.observe(node);
-      return () => resizeObserver.disconnect();
+      observerRef.current = resizeObserver;
     }
+  }, []);
+
+  // Clean up observer on unmount
+  useEffect(() => {
+    return () => {
+      if (observerRef.current) {
+        observerRef.current.disconnect();
+      }
+    };
   }, []);
 
   // Make all widgets static (non-movable) when not in edit mode

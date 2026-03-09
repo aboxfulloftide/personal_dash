@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import api from '../services/api';
 import { getWidget } from '../components/widgets/widgetRegistry';
 
@@ -7,6 +7,9 @@ export function useDashboard() {
   const [layout, setLayout] = useState([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  // Track serialized state to avoid unnecessary re-renders on poll
+  const lastWidgetsJson = useRef('');
+  const lastLayoutJson = useRef('');
 
   // Load dashboard from API
   const loadDashboard = useCallback(async (options = {}) => {
@@ -18,8 +21,20 @@ export function useDashboard() {
         setLoading(true);
       }
       const response = await api.get('/dashboard/layout');
-      setWidgets(response.data.widgets || []);
-      setLayout(response.data.layout || []);
+      const newWidgets = response.data.widgets || [];
+      const newLayout = response.data.layout || [];
+
+      // Only update state if data actually changed to avoid cascading re-renders
+      const widgetsJson = JSON.stringify(newWidgets);
+      const layoutJson = JSON.stringify(newLayout);
+      if (widgetsJson !== lastWidgetsJson.current) {
+        lastWidgetsJson.current = widgetsJson;
+        setWidgets(newWidgets);
+      }
+      if (layoutJson !== lastLayoutJson.current) {
+        lastLayoutJson.current = layoutJson;
+        setLayout(newLayout);
+      }
     } catch (error) {
       console.error('Failed to load dashboard:', error);
       if (!silent) {

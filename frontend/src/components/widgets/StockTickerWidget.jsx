@@ -26,54 +26,130 @@ function formatPercent(value) {
   return `${sign}${value.toFixed(2)}%`;
 }
 
-function StockRow({ symbol, shares, price, changePercent, type, onRemove }) {
+function StockRow({ symbol, shares, price, changePercent, type, holdingTaxRate, globalTaxRate, onRemove, onEditShares, onEditTaxRate }) {
+  const [editingShares, setEditingShares] = useState(false);
+  const [editingTax, setEditingTax] = useState(false);
+  const [editValue, setEditValue] = useState('');
+  const effectiveTaxRate = holdingTaxRate > 0 ? holdingTaxRate : (globalTaxRate || 0);
+  const hasOverride = holdingTaxRate > 0;
   const total = price !== null ? price * shares : null;
+  const afterTax = total !== null && effectiveTaxRate > 0 ? total * (1 - effectiveTaxRate / 100) : null;
   const isPositive = changePercent !== null && changePercent >= 0;
   const isPortfolio = type === 'portfolio';
 
+  const handleSaveShares = () => {
+    const parsed = parseFloat(editValue);
+    if (!isNaN(parsed) && parsed >= 0) {
+      onEditShares(parsed);
+    }
+    setEditingShares(false);
+  };
+
+  const handleSaveTax = () => {
+    const parsed = parseFloat(editValue);
+    if (!isNaN(parsed) && parsed >= 0 && parsed <= 100) {
+      onEditTaxRate(parsed);
+    }
+    setEditingTax(false);
+  };
+
   return (
-    <div className="flex items-center justify-between py-1.5 border-b border-gray-100 dark:border-gray-700 last:border-0">
-      <div className="flex items-center gap-2 min-w-0">
-        <button
-          onClick={onRemove}
-          className="text-gray-400 hover:text-red-500 text-xs"
-          title="Remove"
-        >
-          ×
-        </button>
-        <span title={isPortfolio ? 'Portfolio' : 'Watchlist'}>
-          {isPortfolio ? (
-            <Briefcase className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
-          ) : (
-            <Eye className="w-3.5 h-3.5 text-gray-500 dark:text-gray-400" />
-          )}
-        </span>
-        <span className="font-medium text-gray-800 dark:text-gray-200 text-sm">
-          {symbol}
-        </span>
-      </div>
-      <div className="flex items-center gap-3 text-xs">
-        <span className="text-gray-600 dark:text-gray-400">
-          {formatCurrency(price)}
-        </span>
-        <span className={`w-14 text-right ${isPositive ? 'text-green-600' : 'text-red-500'}`}>
-          {formatPercent(changePercent)}
-        </span>
-        {isPortfolio ? (
-          <>
-            <span className="text-gray-500 dark:text-gray-400 w-8 text-right">
-              {shares}×
-            </span>
-            <span className="font-medium text-gray-800 dark:text-gray-200 w-20 text-right">
-              {formatCurrency(total)}
-            </span>
-          </>
-        ) : (
-          <span className="text-gray-400 dark:text-gray-500 text-xs italic w-28 text-right">
-            watching
+    <div className="border-b border-gray-100 dark:border-gray-700 last:border-0">
+      <div className="flex items-center justify-between py-1.5">
+        <div className="flex items-center gap-2 min-w-0">
+          <button
+            onClick={onRemove}
+            className="text-gray-400 hover:text-red-500 text-xs"
+            title="Remove"
+          >
+            ×
+          </button>
+          <span title={isPortfolio ? 'Portfolio' : 'Watchlist'}>
+            {isPortfolio ? (
+              <Briefcase className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+            ) : (
+              <Eye className="w-3.5 h-3.5 text-gray-500 dark:text-gray-400" />
+            )}
           </span>
-        )}
+          <span className="font-medium text-gray-800 dark:text-gray-200 text-sm">
+            {symbol}
+          </span>
+        </div>
+        <div className="flex items-center gap-3 text-xs">
+          <span className="text-gray-600 dark:text-gray-400">
+            {formatCurrency(price)}
+          </span>
+          <span className={`w-14 text-right ${isPositive ? 'text-green-600' : 'text-red-500'}`}>
+            {formatPercent(changePercent)}
+          </span>
+          {isPortfolio ? (
+            <>
+              {editingShares ? (
+                <input
+                  type="number"
+                  value={editValue}
+                  onChange={(e) => setEditValue(e.target.value)}
+                  onBlur={handleSaveShares}
+                  onKeyDown={(e) => { if (e.key === 'Enter') handleSaveShares(); if (e.key === 'Escape') setEditingShares(false); }}
+                  step="any"
+                  min="0"
+                  className="w-16 px-1 py-0.5 text-right text-xs border border-blue-400 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                  autoFocus
+                />
+              ) : (
+                <span
+                  className="text-gray-500 dark:text-gray-400 w-8 text-right cursor-pointer hover:text-blue-500 dark:hover:text-blue-400"
+                  onClick={() => { setEditValue(String(shares)); setEditingShares(true); }}
+                  title="Click to edit shares"
+                >
+                  {shares}×
+                </span>
+              )}
+              <span className="font-medium text-gray-800 dark:text-gray-200 w-20 text-right">
+                {formatCurrency(total)}
+              </span>
+            </>
+          ) : (
+            <span className="text-gray-400 dark:text-gray-500 text-xs italic w-28 text-right">
+              watching
+            </span>
+          )}
+        </div>
       </div>
+      {isPortfolio && effectiveTaxRate > 0 && (
+        <div className="flex items-center justify-end gap-1 pb-1 -mt-0.5">
+          {editingTax ? (
+            <div className="flex items-center gap-1">
+              <span className="text-xs text-gray-400">tax:</span>
+              <input
+                type="number"
+                value={editValue}
+                onChange={(e) => setEditValue(e.target.value)}
+                onBlur={handleSaveTax}
+                onKeyDown={(e) => { if (e.key === 'Enter') handleSaveTax(); if (e.key === 'Escape') setEditingTax(false); }}
+                step="1"
+                min="0"
+                max="100"
+                className="w-14 px-1 py-0.5 text-right text-xs border border-blue-400 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                autoFocus
+              />
+              <span className="text-xs text-gray-400">%</span>
+            </div>
+          ) : (
+            <span
+              className="text-xs text-gray-400 dark:text-gray-500 cursor-pointer hover:text-blue-500 dark:hover:text-blue-400"
+              onClick={() => { setEditValue(String(holdingTaxRate || 0)); setEditingTax(true); }}
+              title={hasOverride ? 'Custom tax rate (click to edit, set 0 to use global)' : 'Using global tax rate (click to override)'}
+            >
+              <span>
+                {hasOverride ? `tax ${holdingTaxRate}%` : `tax ${globalTaxRate}%`}
+                {!hasOverride && <span className="italic"> (global)</span>}
+                {' → '}{formatCurrency(afterTax)}
+              </span>
+            </span>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -264,6 +340,16 @@ export default function StockTickerWidget({ config, onConfigChange }) {
     onConfigChange?.({ ...config, holdings: newHoldings });
   };
 
+  const handleEditShares = (index, newShares) => {
+    const newHoldings = holdings.map((h, i) => i === index ? { ...h, shares: newShares } : h);
+    onConfigChange?.({ ...config, holdings: newHoldings });
+  };
+
+  const handleEditTaxRate = (index, newTaxRate) => {
+    const newHoldings = holdings.map((h, i) => i === index ? { ...h, tax_rate: newTaxRate } : h);
+    onConfigChange?.({ ...config, holdings: newHoldings });
+  };
+
   const fetchPortfolioHistory = async () => {
     const portfolioHoldings = holdings.filter(h => (h.type || 'portfolio') === 'portfolio');
     if (portfolioHoldings.length === 0) return;
@@ -377,7 +463,11 @@ export default function StockTickerWidget({ config, onConfigChange }) {
               price={quote.price}
               changePercent={quote.change_percent}
               type={holding.type || 'portfolio'}
+              holdingTaxRate={holding.tax_rate || 0}
+              globalTaxRate={config.tax_rate || 0}
               onRemove={() => handleRemoveHolding(index)}
+              onEditShares={(newShares) => handleEditShares(index, newShares)}
+              onEditTaxRate={(newRate) => handleEditTaxRate(index, newRate)}
             />
           );
         })}
@@ -444,19 +534,43 @@ export default function StockTickerWidget({ config, onConfigChange }) {
         </div>
       )}
 
-      {portfolioHoldings.length > 0 && (
-        <div className="pt-2 mt-2 border-t border-gray-200 dark:border-gray-700">
-          <div className="flex items-center justify-between">
-            <span className="text-xs text-gray-500 dark:text-gray-400 flex items-center gap-1">
-              <Briefcase className="w-3 h-3" />
-              Portfolio Value
-            </span>
-            <span className="font-semibold text-gray-800 dark:text-gray-200">
-              {formatCurrency(totalValue)}
-            </span>
+      {portfolioHoldings.length > 0 && (() => {
+        const globalTax = config.tax_rate || 0;
+        const totalAfterTax = portfolioHoldings.reduce((sum, h) => {
+          const quote = quotes[h.symbol];
+          if (quote?.price) {
+            const val = quote.price * h.shares;
+            const rate = h.tax_rate > 0 ? h.tax_rate : globalTax;
+            return sum + (rate > 0 ? val * (1 - rate / 100) : val);
+          }
+          return sum;
+        }, 0);
+        const hasTax = globalTax > 0 || portfolioHoldings.some(h => h.tax_rate > 0);
+
+        return (
+          <div className="pt-2 mt-2 border-t border-gray-200 dark:border-gray-700">
+            <div className="flex items-center justify-between">
+              <span className="text-xs text-gray-500 dark:text-gray-400 flex items-center gap-1">
+                <Briefcase className="w-3 h-3" />
+                Portfolio Value
+              </span>
+              <span className="font-semibold text-gray-800 dark:text-gray-200">
+                {formatCurrency(totalValue)}
+              </span>
+            </div>
+            {hasTax && (
+              <div className="flex items-center justify-between mt-1">
+                <span className="text-xs text-gray-500 dark:text-gray-400">
+                  After Tax
+                </span>
+                <span className="text-xs font-medium text-gray-600 dark:text-gray-300">
+                  {formatCurrency(totalAfterTax)}
+                </span>
+              </div>
+            )}
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       <AddHoldingModal
         isOpen={showAddModal}

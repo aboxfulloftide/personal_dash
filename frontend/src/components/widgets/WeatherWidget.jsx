@@ -663,8 +663,18 @@ export default function WeatherWidget({ config }) {
 
   return (
     <div className="flex flex-col">
-      <div className="text-xs text-gray-500 dark:text-gray-400 text-right mb-1">
-        {displayLocation}
+      <div className="flex justify-between items-start mb-1">
+        {data.next_climate_event ? (
+          <div className="text-xs text-gray-500 dark:text-gray-400" title={data.next_climate_event.description}>
+            <span className="font-medium text-gray-700 dark:text-gray-300">{data.next_climate_event.days_until}d</span>
+            {' '}til {data.next_climate_event.event_name}
+          </div>
+        ) : (
+          <div />
+        )}
+        <div className="text-xs text-gray-500 dark:text-gray-400 text-right shrink-0 ml-2">
+          {displayLocation}
+        </div>
       </div>
 
       <div className="flex-shrink-0">

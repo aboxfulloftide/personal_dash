@@ -96,6 +96,7 @@ export default function ReminderWidget({ config = {}, isEditing = false }) {
       refresh();
     } catch (err) {
       console.error('Failed to acknowledge reminder:', err);
+      alert(`Failed to acknowledge reminder: ${err.response?.data?.detail || err.message}`);
     }
   };
 

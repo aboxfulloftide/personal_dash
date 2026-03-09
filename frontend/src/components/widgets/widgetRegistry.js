@@ -57,6 +57,7 @@ const widgetRegistry = {
         ],
       },
       api_key: { type: 'text', label: 'API Key (optional)', placeholder: 'Your API key for higher limits' },
+      tax_rate: { type: 'number', label: 'Default Tax Rate (%)', default: 0, min: 0, max: 100, step: 1 },
       refresh_interval: { type: 'number', label: 'Refresh Interval (seconds)', default: 1200, min: 1200, max: 3600, step: 60 },
     },
   },

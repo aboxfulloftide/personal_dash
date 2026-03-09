@@ -8,6 +8,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 from datetime import datetime, timedelta, timezone
 from sqlalchemy import select
+from sqlalchemy.orm.attributes import flag_modified
 
 from app.core.database import SessionLocal
 from app.crud.email_credential import get_credentials_due_for_scan, update_scan_status
@@ -766,8 +767,22 @@ async def monitor_reminder_alerts_task():
                             # Only trigger if alert state actually changed
                             current_active = widget.get("alert_active", False)
                             current_message = widget.get("alert_message", "")
+                            acked_message = widget.get("alert_acknowledged_message")
 
-                            if not current_active or current_message != message:
+                            if current_active:
+                                # Alert already showing — update if message changed
+                                if current_message != message:
+                                    trigger_widget_alert(
+                                        db=db,
+                                        user_id=dashboard.user_id,
+                                        widget_id=widget_id,
+                                        severity=severity,
+                                        message=message,
+                                    )
+                                    logger.info(f"Updated {severity} reminder alert for widget {widget_id}: {message}")
+                            elif acked_message != message:
+                                # Alert not active — only re-trigger if situation
+                                # changed since user last acknowledged
                                 trigger_widget_alert(
                                     db=db,
                                     user_id=dashboard.user_id,
@@ -777,9 +792,18 @@ async def monitor_reminder_alerts_task():
                                 )
                                 logger.info(f"Triggered {severity} reminder alert for widget {widget_id}: {message}")
                         else:
-                            # No tripped reminders — clear alert if active
+                            # No tripped reminders — clear alert and acked state
+                            cleared = False
                             if widget.get("alert_active"):
                                 acknowledge_widget_alert(db, dashboard.user_id, widget_id)
+                                cleared = True
+                            if widget.get("alert_acknowledged_message"):
+                                widget["alert_acknowledged_message"] = None
+                                dashboard.layout = {**dashboard.layout, "widgets": widgets}
+                                flag_modified(dashboard, "layout")
+                                db.commit()
+                                cleared = True
+                            if cleared:
                                 logger.info(f"Cleared reminder alert for widget {widget_id}")
 
                     except Exception as e:

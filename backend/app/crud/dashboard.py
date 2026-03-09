@@ -142,6 +142,7 @@ def trigger_widget_alert(
             widget["alert_severity"] = severity
             widget["alert_message"] = message
             widget["alert_triggered_at"] = datetime.now(timezone.utc).isoformat()
+            widget["alert_acknowledged_message"] = None  # Clear acked state
 
             updated_widget = widget
             break
@@ -172,6 +173,9 @@ def acknowledge_widget_alert(
     updated_widget = None
     for widget in widgets:
         if widget.get("id") == widget_id:
+            # Remember what was acknowledged so the monitor won't re-trigger
+            # the same alert until the situation changes
+            widget["alert_acknowledged_message"] = widget.get("alert_message")
             # Clear alert fields
             widget["alert_active"] = False
             widget["alert_severity"] = None

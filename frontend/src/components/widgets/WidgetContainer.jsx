@@ -1,5 +1,39 @@
-import { Suspense, lazy, useState } from 'react';
+import { Suspense, lazy, useState, Component } from 'react';
 import { getWidget } from './widgetRegistry';
+
+// Cache lazy components so React.lazy() is only called once per widget type
+const lazyCache = new Map();
+function getLazyWidget(widgetDef) {
+  if (!lazyCache.has(widgetDef.component)) {
+    lazyCache.set(widgetDef.component, lazy(widgetDef.component));
+  }
+  return lazyCache.get(widgetDef.component);
+}
+
+// Error boundary to catch widget render crashes and show fallback instead of white screen
+class WidgetErrorBoundary extends Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error };
+  }
+  componentDidCatch(error, info) {
+    console.error(`Widget crash [${this.props.widgetType}]:`, error, info);
+  }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <WidgetError
+          error={this.state.error?.message || 'Widget crashed'}
+          onRetry={() => this.setState({ hasError: false, error: null })}
+        />
+      );
+    }
+    return this.props.children;
+  }
+}
 
 function WidgetLoader() {
   return (
@@ -46,7 +80,7 @@ export default function WidgetContainer({
   const [retryKey, setRetryKey] = useState(0);
 
   const widgetDef = getWidget(type);
-  const WidgetComponent = lazy(widgetDef.component);
+  const WidgetComponent = getLazyWidget(widgetDef);
 
   const handleRetry = () => {
     setError(null);
@@ -103,9 +137,11 @@ export default function WidgetContainer({
         {error ? (
           <WidgetError error={error} onRetry={handleRetry} />
         ) : (
-          <Suspense fallback={<WidgetLoader />} key={retryKey}>
-            <WidgetComponent config={config} widgetId={widgetId} onConfigChange={onConfigChange} isEditing={isEditing} />
-          </Suspense>
+          <WidgetErrorBoundary widgetType={type} key={retryKey}>
+            <Suspense fallback={<WidgetLoader />}>
+              <WidgetComponent config={config} widgetId={widgetId} onConfigChange={onConfigChange} isEditing={isEditing} />
+            </Suspense>
+          </WidgetErrorBoundary>
         )}
       </div>
     </div>

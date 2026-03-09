@@ -8,6 +8,7 @@ class Settings(BaseSettings):
 
     # Database
     DATABASE_URL: str
+    WEATHER_DB_URL: str = ""  # Connection string for external weather database
 
     # Server
     HOST: str = "0.0.0.0"

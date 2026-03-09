@@ -1,10 +1,12 @@
 import httpx
 import math
+import pymysql
 from datetime import datetime, timedelta
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 
 from app.api.v1.deps import CurrentActiveUser
+from app.core.config import settings
 
 router = APIRouter(prefix="/weather", tags=["Weather"])
 
@@ -89,6 +91,12 @@ class WeatherAlertsResponse(BaseModel):
     highest_severity: str | None  # For quick checks
 
 
+class ClimateEvent(BaseModel):
+    event_name: str  # Human-readable name
+    days_until: int  # Days from today until the average occurrence
+    description: str
+
+
 class WeatherResponse(BaseModel):
     location: str
     current: CurrentWeather
@@ -97,6 +105,7 @@ class WeatherResponse(BaseModel):
     external_forecast_url: str  # URL to external detailed forecast
     sun_times: SunTimes | None = None  # Sunrise/sunset times
     moon_phase: MoonPhase | None = None  # Current moon phase
+    next_climate_event: ClimateEvent | None = None  # Next upcoming climate milestone
 
 
 # Weather code mappings for Open-Meteo
@@ -559,6 +568,70 @@ async def fetch_nws_alerts(lat: float, lon: float) -> WeatherAlertsResponse:
     )
 
 
+def _format_event_name(raw_name: str) -> str:
+    """Convert DB event names like 'first_70F_day' to readable labels like 'First 70°F Day'."""
+    name = raw_name.replace("_", " ")
+    # Replace temperature patterns: 70F -> 70°F, 32F -> 32°F
+    import re
+    name = re.sub(r'(\d+)F\b', r'\1°F', name, flags=re.IGNORECASE)
+    # Title case but keep °F intact
+    words = name.split()
+    result = []
+    for w in words:
+        if '°' in w:
+            result.append(w)
+        else:
+            result.append(w.capitalize())
+    return " ".join(result)
+
+
+def fetch_next_climate_event() -> ClimateEvent | None:
+    """Query the weather database for the next upcoming climate event."""
+    if not settings.WEATHER_DB_URL:
+        return None
+
+    try:
+        from sqlalchemy import create_engine, text
+        engine = create_engine(settings.WEATHER_DB_URL, pool_pre_ping=True)
+        today_doy = datetime.now().timetuple().tm_yday
+
+        with engine.connect() as conn:
+            # Find the next event after today's day-of-year
+            result = conn.execute(text(
+                "SELECT event_name, avg_day_of_year, description "
+                "FROM climate_averages "
+                "WHERE avg_day_of_year > :today_doy "
+                "ORDER BY avg_day_of_year ASC LIMIT 1"
+            ), {"today_doy": today_doy})
+            row = result.fetchone()
+
+            if not row:
+                # Wrap around to next year's first event
+                result = conn.execute(text(
+                    "SELECT event_name, avg_day_of_year, description "
+                    "FROM climate_averages "
+                    "ORDER BY avg_day_of_year ASC LIMIT 1"
+                ))
+                row = result.fetchone()
+                if not row:
+                    return None
+                days_until = int(365 - today_doy + float(row[1]))
+            else:
+                days_until = int(float(row[1]) - today_doy)
+
+        engine.dispose()
+
+        return ClimateEvent(
+            event_name=_format_event_name(row[0]),
+            days_until=days_until,
+            description=row[2] or "",
+        )
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).warning(f"Failed to fetch climate event: {e}")
+        return None
+
+
 @router.get("/locations/search", response_model=list[LocationResult])
 async def search_locations_endpoint(
     current_user: CurrentActiveUser,
@@ -659,6 +732,9 @@ async def get_weather(
     # Calculate moon phase
     moon_phase = calculate_moon_phase()
 
+    # Fetch next climate milestone
+    next_climate_event = fetch_next_climate_event()
+
     return WeatherResponse(
         location=display_name,
         current=result["current"],
@@ -667,4 +743,5 @@ async def get_weather(
         external_forecast_url=get_external_forecast_url(lat, lon, external_forecast_provider),
         sun_times=result.get("sun_times"),
         moon_phase=moon_phase,
+        next_climate_event=next_climate_event,
     )

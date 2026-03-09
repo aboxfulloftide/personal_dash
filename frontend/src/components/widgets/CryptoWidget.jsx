@@ -37,10 +37,20 @@ function formatTimeAgo(date) {
   return `${hours}h ago`;
 }
 
-function CryptoRow({ id, symbol, amount, price, change24h, currency, type, onRemove }) {
+function CryptoRow({ id, symbol, amount, price, change24h, currency, type, onRemove, onEditAmount }) {
+  const [editing, setEditing] = useState(false);
+  const [editValue, setEditValue] = useState(String(amount));
   const total = price !== null ? price * amount : null;
   const isPositive = change24h !== null && change24h >= 0;
   const isPortfolio = type === 'portfolio';
+
+  const handleSave = () => {
+    const parsed = parseFloat(editValue);
+    if (!isNaN(parsed) && parsed >= 0) {
+      onEditAmount(parsed);
+    }
+    setEditing(false);
+  };
 
   return (
     <div className="flex items-center justify-between py-1.5 border-b border-gray-100 dark:border-gray-700 last:border-0">
@@ -72,9 +82,27 @@ function CryptoRow({ id, symbol, amount, price, change24h, currency, type, onRem
         </span>
         {isPortfolio ? (
           <>
-            <span className="text-gray-500 dark:text-gray-400 w-12 text-right">
-              {amount}×
-            </span>
+            {editing ? (
+              <input
+                type="number"
+                value={editValue}
+                onChange={(e) => setEditValue(e.target.value)}
+                onBlur={handleSave}
+                onKeyDown={(e) => { if (e.key === 'Enter') handleSave(); if (e.key === 'Escape') setEditing(false); }}
+                step="any"
+                min="0"
+                className="w-20 px-1 py-0.5 text-right text-xs border border-blue-400 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                autoFocus
+              />
+            ) : (
+              <span
+                className="text-gray-500 dark:text-gray-400 w-12 text-right cursor-pointer hover:text-blue-500 dark:hover:text-blue-400"
+                onClick={() => { setEditValue(String(amount)); setEditing(true); }}
+                title="Click to edit amount"
+              >
+                {amount}×
+              </span>
+            )}
             <span className="font-medium text-gray-800 dark:text-gray-200 w-20 text-right">
               {formatCurrency(total, currency)}
             </span>
@@ -280,6 +308,11 @@ export default function CryptoWidget({ config, onConfigChange }) {
     onConfigChange?.({ ...config, holdings: newHoldings });
   };
 
+  const handleEditAmount = (index, newAmount) => {
+    const newHoldings = holdings.map((h, i) => i === index ? { ...h, amount: newAmount } : h);
+    onConfigChange?.({ ...config, holdings: newHoldings });
+  };
+
   const fetchPortfolioHistory = async () => {
     const portfolioHoldings = holdings.filter(h => (h.type || 'portfolio') === 'portfolio');
     if (portfolioHoldings.length === 0) return;
@@ -396,6 +429,7 @@ export default function CryptoWidget({ config, onConfigChange }) {
               currency={currency}
               type={holding.type || 'portfolio'}
               onRemove={() => handleRemoveHolding(index)}
+              onEditAmount={(newAmount) => handleEditAmount(index, newAmount)}
             />
           );
         })}
