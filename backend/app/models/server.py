@@ -37,6 +37,7 @@ class ServerMetric(Base):
     disk_percent = Column(Float)
     network_in = Column(BigInteger)
     network_out = Column(BigInteger)
+    temperatures_json = Column(Text)  # JSON: {"CPU": 52.5, "GPU": 45.0, ...}
     recorded_at = Column(DateTime, server_default=func.now(), index=True)
 
     server = relationship("Server", back_populates="metrics")
@@ -119,3 +120,16 @@ class AlertHistory(Base):
     triggered_at = Column(DateTime, server_default=func.now())
 
     alert = relationship("ServerAlert", back_populates="history")
+
+
+class ProcessPreset(Base):
+    __tablename__ = "process_presets"
+
+    id = Column(Integer, primary_key=True, index=True)
+    category = Column(String(100), nullable=False)
+    name = Column(String(255), nullable=False)
+    pattern = Column(String(255), nullable=False)
+    hint = Column(String(500))
+    sort_order = Column(Integer, default=0)
+    is_builtin = Column(Boolean, default=False)  # True = seeded default, False = user-added
+    created_at = Column(DateTime, server_default=func.now())

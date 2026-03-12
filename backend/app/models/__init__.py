@@ -9,6 +9,7 @@ from app.models.cache import APICache
 from app.models.finance import StockQuote, CryptoPrice
 from app.models.reminder import Reminder, ReminderInstance
 from app.models.custom_widget import CustomWidgetData
+from app.models.router import Router, RouterPollResult
 
 __all__ = [
     "User",
@@ -32,4 +33,6 @@ __all__ = [
     "Reminder",
     "ReminderInstance",
     "CustomWidgetData",
+    "Router",
+    "RouterPollResult",
 ]

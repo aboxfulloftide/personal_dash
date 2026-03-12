@@ -1,12 +1,13 @@
 from fastapi import APIRouter
 
-from app.api.v1.endpoints import auth, calendar, custom_widgets, dashboard, email_credentials, email_scanner, finance, fitness, network, news, packages, reminders, servers, weather
+from app.api.v1.endpoints import auth, calendar, custom_widgets, dashboard, email_credentials, email_scanner, finance, fitness, network, news, packages, reminders, routers, servers, weather
 
 api_router = APIRouter()
 
 api_router.include_router(auth.router)
 api_router.include_router(dashboard.router)
 api_router.include_router(servers.router)
+api_router.include_router(routers.router)
 api_router.include_router(packages.router)
 api_router.include_router(finance.router)
 api_router.include_router(weather.router)

@@ -1,10 +1,10 @@
 import secrets
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from sqlalchemy.orm import Session
 from sqlalchemy import select, delete
 
-from app.models.server import Server, ServerMetric, DockerContainer, MonitoredProcess, MonitoredDrive
-from app.schemas.server import ServerCreate, MetricsData, ContainerInfo, ProcessInfo, ProcessCreate, DriveInfo, DriveCreate
+from app.models.server import Server, ServerMetric, DockerContainer, MonitoredProcess, MonitoredDrive, ProcessPreset
+from app.schemas.server import ServerCreate, MetricsData, ContainerInfo, ProcessInfo, ProcessCreate, DriveInfo, DriveCreate, ProcessPresetCreate
 from app.core.security import get_password_hash
 
 
@@ -76,6 +76,8 @@ def update_server_status(db: Session, server_id: int, is_online: bool) -> None:
 
 def record_metrics(db: Session, server_id: int, metrics: MetricsData) -> ServerMetric:
     """Insert a new metrics record."""
+    import json as _json
+    temperatures_json = _json.dumps(metrics.temperatures) if metrics.temperatures else None
     metric = ServerMetric(
         server_id=server_id,
         cpu_percent=metrics.cpu_percent,
@@ -83,6 +85,7 @@ def record_metrics(db: Session, server_id: int, metrics: MetricsData) -> ServerM
         disk_percent=metrics.disk_percent,
         network_in=metrics.network_in,
         network_out=metrics.network_out,
+        temperatures_json=temperatures_json,
     )
     db.add(metric)
     db.commit()
@@ -140,6 +143,17 @@ def get_recent_metrics(db: Session, server_id: int, limit: int = 60) -> list[Ser
         .where(ServerMetric.server_id == server_id)
         .order_by(ServerMetric.recorded_at.desc())
         .limit(limit)
+    )
+    return list(result.scalars().all())
+
+
+def get_metrics_by_timerange(db: Session, server_id: int, hours: int = 1) -> list[ServerMetric]:
+    """Get metrics for a server within the last N hours, ordered oldest first."""
+    cutoff = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(hours=hours)
+    result = db.execute(
+        select(ServerMetric)
+        .where(ServerMetric.server_id == server_id, ServerMetric.recorded_at >= cutoff)
+        .order_by(ServerMetric.recorded_at.asc())
     )
     return list(result.scalars().all())
 
@@ -257,5 +271,41 @@ def delete_monitored_drive(db: Session, drive_id: int) -> bool:
     if not drive:
         return False
     db.delete(drive)
+    db.commit()
+    return True
+
+
+# ─── Process Presets ──────────────────────────────────────────────────────────
+
+def get_process_presets(db: Session) -> list[ProcessPreset]:
+    """Get all process presets ordered by category and sort_order."""
+    result = db.execute(
+        select(ProcessPreset).order_by(ProcessPreset.category, ProcessPreset.sort_order, ProcessPreset.id)
+    )
+    return list(result.scalars().all())
+
+
+def create_process_preset(db: Session, preset_in: ProcessPresetCreate) -> ProcessPreset:
+    """Create a user-defined process preset."""
+    preset = ProcessPreset(
+        category=preset_in.category,
+        name=preset_in.name,
+        pattern=preset_in.pattern,
+        hint=preset_in.hint,
+        sort_order=preset_in.sort_order,
+        is_builtin=False,
+    )
+    db.add(preset)
+    db.commit()
+    db.refresh(preset)
+    return preset
+
+
+def delete_process_preset(db: Session, preset_id: int) -> bool:
+    """Delete a user-defined preset. Returns False if not found or is builtin."""
+    preset = db.get(ProcessPreset, preset_id)
+    if not preset or preset.is_builtin:
+        return False
+    db.delete(preset)
     db.commit()
     return True

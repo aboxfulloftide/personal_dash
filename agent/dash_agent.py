@@ -13,6 +13,7 @@ Configuration via environment variables or a .env file:
     DASH_COLLECT_DOCKER   (default true) Enable Docker container stats
     DASH_COLLECT_PROCESSES (default true) Enable process monitoring
     DASH_COLLECT_DRIVES   (default true) Enable drive monitoring
+    DASH_COLLECT_TEMPS    (default true) Enable temperature sensor collection
     DASH_LOG_LEVEL        (default INFO) Logging level
 
 Usage:
@@ -56,6 +57,7 @@ class Config:
     collect_docker: bool = True
     collect_processes: bool = True
     collect_drives: bool = True
+    collect_temps: bool = True
     log_level: str = "INFO"
 
 
@@ -127,6 +129,11 @@ def load_config(config_file: str | None = None) -> Config:
         "1",
         "yes",
     )
+    collect_temps = os.environ.get("DASH_COLLECT_TEMPS", "true").lower() in (
+        "true",
+        "1",
+        "yes",
+    )
     log_level = os.environ.get("DASH_LOG_LEVEL", "INFO").upper()
 
     return Config(
@@ -137,6 +144,7 @@ def load_config(config_file: str | None = None) -> Config:
         collect_docker=collect_docker,
         collect_processes=collect_processes,
         collect_drives=collect_drives,
+        collect_temps=collect_temps,
         log_level=log_level,
     )
 
@@ -155,12 +163,133 @@ def setup_logging(level: str) -> None:
 # ---------------------------------------------------------------------------
 
 
+def collect_temperatures() -> dict:
+    """Collect temperature sensor readings. Works on Raspberry Pi and Ubuntu."""
+    temps = {}
+
+    # Try psutil.sensors_temperatures() first (Linux with lm-sensors or kernel drivers)
+    try:
+        sensors = psutil.sensors_temperatures()
+        if sensors:
+            for chip, readings in sensors.items():
+                if not readings:
+                    continue
+                chip_lower = chip.lower()
+
+                # Raspberry Pi CPU
+                if chip_lower in ("cpu_thermal", "cpu-thermal", "arm-thermal"):
+                    temps["CPU"] = round(readings[0].current, 1)
+
+                # Intel CPUs (coretemp)
+                elif chip_lower == "coretemp":
+                    pkg = next((r for r in readings if "package" in r.label.lower()), None)
+                    if pkg:
+                        temps["CPU"] = round(pkg.current, 1)
+                    elif readings:
+                        temps["CPU"] = round(max(r.current for r in readings), 1)
+
+                # AMD CPUs (k10temp)
+                elif chip_lower == "k10temp":
+                    tctl = next((r for r in readings if r.label in ("Tctl", "Tdie")), None)
+                    if tctl:
+                        temps["CPU"] = round(tctl.current, 1)
+                    elif readings:
+                        temps["CPU"] = round(readings[0].current, 1)
+
+                # ACPI thermal zones (fallback if nothing else set CPU)
+                elif chip_lower == "acpitz":
+                    if "CPU" not in temps:
+                        valid = [r for r in readings if r.current > 0]
+                        if valid:
+                            temps["CPU"] = round(valid[0].current, 1)
+
+                # AMD GPU
+                elif chip_lower in ("amdgpu", "radeon"):
+                    gpu = next(
+                        (r for r in readings if "edge" in r.label.lower()),
+                        readings[0] if readings else None,
+                    )
+                    if gpu:
+                        temps["GPU"] = round(gpu.current, 1)
+
+                # NVIDIA GPU (via nvidia-smi kernel module or nouveau)
+                elif chip_lower in ("nouveau",):
+                    if readings:
+                        temps["GPU"] = round(readings[0].current, 1)
+
+                # NVMe drives — multiple drives may share the same chip key,
+                # each with their own Composite sensor
+                elif chip_lower.startswith("nvme"):
+                    composites = [r for r in readings if "composite" in r.label.lower()]
+                    if not composites:
+                        composites = readings[:1]
+                    for i, c in enumerate(composites):
+                        label = f"NVME{i}" if len(composites) > 1 else "NVME"
+                        temps[label] = round(c.current, 1)
+
+                # HDD temps via drivetemp kernel module
+                elif chip_lower.startswith("drivetemp"):
+                    for r in readings:
+                        key = r.label if r.label else chip
+                        temps[key] = round(r.current, 1)
+
+                # WiFi chips (Raspberry Pi onboard WiFi etc.)
+                elif any(w in chip_lower for w in ("wifi", "wireless", "iwlwifi", "brcmfmac")):
+                    if readings:
+                        temps["WiFi"] = round(readings[0].current, 1)
+
+    except AttributeError:
+        pass  # sensors_temperatures() not available on this platform
+    except Exception as e:
+        logger.debug("psutil sensors_temperatures error: %s", e)
+
+    # Fallback: read /sys/class/thermal/thermal_zone* directly (RPi, embedded Linux)
+    if not temps:
+        try:
+            import glob
+
+            zone_paths = sorted(glob.glob("/sys/class/thermal/thermal_zone*/temp"))
+            for zone_path in zone_paths:
+                try:
+                    zone_id = zone_path.split("/")[-2].replace("thermal_zone", "")
+                    type_path = zone_path.replace("/temp", "/type")
+                    try:
+                        with open(type_path) as f:
+                            zone_type = f.read().strip()
+                    except OSError:
+                        zone_type = f"zone{zone_id}"
+
+                    with open(zone_path) as f:
+                        raw = int(f.read().strip())
+                    temp = round(raw / 1000.0, 1)
+
+                    if temp <= 0:
+                        continue
+
+                    if zone_type in ("cpu-thermal", "cpu_thermal", "arm-thermal"):
+                        temps["CPU"] = temp
+                    elif zone_type == "gpu_thermal":
+                        temps["GPU"] = temp
+                    else:
+                        temps[zone_type] = temp
+                except (OSError, ValueError):
+                    continue
+        except Exception as e:
+            logger.debug("Thermal zone fallback error: %s", e)
+
+    if temps:
+        logger.debug("Temperatures: %s", temps)
+
+    return temps
+
+
 def collect_system_metrics() -> dict:
-    """Collect CPU, memory, disk, and network metrics."""
+    """Collect CPU, memory, disk, network metrics, and temperatures."""
     cpu = psutil.cpu_percent(interval=1)
     mem = psutil.virtual_memory()
     disk = psutil.disk_usage("/")
     net = psutil.net_io_counters()
+    temperatures = collect_temperatures()
 
     return {
         "cpu_percent": cpu,
@@ -168,6 +297,7 @@ def collect_system_metrics() -> dict:
         "disk_percent": disk.percent,
         "network_in": net.bytes_recv,
         "network_out": net.bytes_sent,
+        "temperatures": temperatures if temperatures else None,
     }
 
 
@@ -510,6 +640,8 @@ def main() -> None:
                 metrics["memory_percent"],
                 metrics["disk_percent"],
             )
+            if not config.collect_temps:
+                metrics["temperatures"] = None
 
             containers = []
             if config.collect_docker and DOCKER_AVAILABLE:

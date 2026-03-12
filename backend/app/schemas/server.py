@@ -74,6 +74,7 @@ class MetricsData(BaseModel):
     disk_percent: Optional[float]
     network_in: Optional[int]
     network_out: Optional[int]
+    temperatures: Optional[dict[str, float]] = None  # {"CPU": 52.5, "GPU": 45.0}
 
 
 class MetricsPayload(BaseModel):
@@ -93,9 +94,23 @@ class MetricRecord(BaseModel):
     disk_percent: Optional[float]
     network_in: Optional[int]
     network_out: Optional[int]
+    temperatures: Optional[dict[str, float]] = None
     recorded_at: datetime
 
     model_config = {"from_attributes": True}
+
+    @classmethod
+    def model_validate(cls, obj, **kwargs):
+        """Deserialize temperatures_json when loading from DB."""
+        import json as _json
+        data = super().model_validate(obj, **kwargs)
+        # If temperatures is None but temperatures_json exists on the ORM object, parse it
+        if data.temperatures is None and hasattr(obj, 'temperatures_json') and obj.temperatures_json:
+            try:
+                data.temperatures = _json.loads(obj.temperatures_json)
+            except Exception:
+                pass
+        return data
 
 
 class ContainerRecord(BaseModel):
@@ -167,3 +182,45 @@ class ServerDetail(BaseModel):
 class MessageResponse(BaseModel):
     """Generic message response."""
     message: str
+
+
+class ProcessPresetCreate(BaseModel):
+    """Schema for creating a process preset."""
+    category: str = Field(..., min_length=1, max_length=100)
+    name: str = Field(..., min_length=1, max_length=255)
+    pattern: str = Field(..., min_length=1, max_length=255)
+    hint: Optional[str] = Field(None, max_length=500)
+    sort_order: int = Field(0)
+
+
+class ProcessPresetResponse(BaseModel):
+    """Schema for a process preset response."""
+    id: int
+    category: str
+    name: str
+    pattern: str
+    hint: Optional[str]
+    sort_order: int
+    is_builtin: bool
+
+    model_config = {"from_attributes": True}
+
+
+class DeployRequest(BaseModel):
+    """Schema for SSH deployment request."""
+    ssh_host: str
+    ssh_port: int = Field(22, ge=1, le=65535)
+    ssh_user: str = "root"
+    ssh_password: Optional[str] = None
+    ssh_key: Optional[str] = None  # PEM-encoded private key text
+    sudo_password: Optional[str] = None  # Defaults to ssh_password if not set
+    backend_url: Optional[str] = None  # Full URL for DASH_API_URL, e.g. http://192.168.1.10:8000/api/v1
+    install_dir: str = "/opt/dash-agent"
+    env_dir: str = "/etc/dash-agent"
+    service_name: str = "dash-agent"
+
+
+class DeployResponse(BaseModel):
+    """Schema for SSH deployment response."""
+    success: bool
+    log: list[str]

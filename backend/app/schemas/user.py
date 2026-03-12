@@ -6,12 +6,20 @@ from pydantic import BaseModel, EmailStr, ConfigDict
 class UserBase(BaseModel):
     email: EmailStr
     display_name: str | None = None
+    favicon_url: str | None = None
 
 
 class UserCreate(UserBase):
     """Schema for user registration."""
 
     password: str
+
+
+class UserUpdate(BaseModel):
+    """Schema for updating user profile."""
+
+    display_name: str | None = None
+    favicon_url: str | None = None
 
 
 class UserResponse(UserBase):

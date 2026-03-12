@@ -15,7 +15,7 @@ from app.schemas.auth import (
     LogoutRequest,
     MessageResponse,
 )
-from app.schemas.user import UserCreate, UserResponse
+from app.schemas.user import UserCreate, UserResponse, UserUpdate
 from app.api.v1.deps import CurrentActiveUser, DbSession
 
 router = APIRouter(prefix="/auth", tags=["authentication"])
@@ -163,4 +163,20 @@ def logout_all(db: DbSession, current_user: CurrentActiveUser) -> dict:
 @router.get("/me", response_model=UserResponse)
 def get_current_user_info(current_user: CurrentActiveUser) -> User:
     """Get the current authenticated user's information."""
+    return current_user
+
+
+@router.patch("/me", response_model=UserResponse)
+def update_current_user(
+    user_in: UserUpdate, db: DbSession, current_user: CurrentActiveUser
+) -> User:
+    """Update the current authenticated user's profile."""
+    if user_in.display_name is not None:
+        current_user.display_name = user_in.display_name
+    if user_in.favicon_url is not None:
+        current_user.favicon_url = user_in.favicon_url
+    elif "favicon_url" in user_in.model_fields_set:
+        current_user.favicon_url = None
+    db.commit()
+    db.refresh(current_user)
     return current_user

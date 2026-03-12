@@ -11,13 +11,16 @@ class Settings(BaseSettings):
     WEATHER_DB_URL: str = ""  # Connection string for external weather database
 
     # Server
-    HOST: str = "0.0.0.0"
+    HOST: str = "127.0.0.1"
     PORT: int = 8000
 
     # CORS - Allow all origins in development, specific origins in production
     # Set CORS_ORIGINS in .env as comma-separated list: "http://localhost:5173,http://192.168.1.100:5173"
     # Or set to ["*"] to allow all origins (development only!)
     CORS_ORIGINS: List[str] = ["*"]  # Allow all origins by default for easier development
+
+    # Public-facing backend URL (used for agent env file generation)
+    BACKEND_URL: str = "http://localhost:8000"
 
     # JWT
     SECRET_KEY: str

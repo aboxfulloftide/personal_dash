@@ -820,6 +820,27 @@ async def monitor_reminder_alerts_task():
     logger.info("Reminder alerts monitoring completed")
 
 
+async def poll_routers_task():
+    """Poll all routers that are due: ping + optional SSH script."""
+    db = SessionLocal()
+    try:
+        from app.crud.router import get_routers_due_for_poll
+        from app.core.router_poller import poll_router
+
+        routers = get_routers_due_for_poll(db)
+        if routers:
+            logger.info(f"Polling {len(routers)} router(s)")
+        for r in routers:
+            try:
+                poll_router(db, r)
+            except Exception as e:
+                logger.error(f"Failed to poll router {r.id} ({r.hostname}): {e}")
+    except Exception as e:
+        logger.error(f"Error in router poll task: {e}")
+    finally:
+        db.close()
+
+
 def start_scheduler():
     """Start the background scheduler."""
     global scheduler
@@ -903,8 +924,17 @@ def start_scheduler():
         replace_existing=True,
     )
 
+    # Poll routers every 30 seconds (individual poll intervals enforced inside the task)
+    scheduler.add_job(
+        poll_routers_task,
+        trigger=IntervalTrigger(seconds=30),
+        id="poll_routers",
+        name="Ping routers and run SSH scripts",
+        replace_existing=True,
+    )
+
     scheduler.start()
-    logger.info("Background scheduler started - email auto-scan, package cleanup, speed test cleanup, weather alerts monitoring, reminders, reminder alerts, custom widget alerts, and Garmin sync enabled")
+    logger.info("Background scheduler started")
 
 
 def stop_scheduler():

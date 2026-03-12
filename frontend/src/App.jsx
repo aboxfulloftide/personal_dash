@@ -13,7 +13,7 @@ function App() {
   return (
     <ThemeProvider>
     <AuthProvider>
-      <Router>
+      <Router basename="/personal_dash">
         <Routes>
           <Route path="/login" element={<LoginPage />} />
           <Route path="/register" element={<RegisterPage />} />

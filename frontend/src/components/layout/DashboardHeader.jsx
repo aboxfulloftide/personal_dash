@@ -1,10 +1,89 @@
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { useTheme } from '../../contexts/ThemeContext';
 
+function ProfileSettingsModal({ onClose }) {
+  const { user, updateUser } = useAuth();
+  const [faviconUrl, setFaviconUrl] = useState(user?.favicon_url || '');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  const handleSave = async () => {
+    setSaving(true);
+    setError('');
+    try {
+      await updateUser({ favicon_url: faviconUrl || null });
+      onClose();
+    } catch {
+      setError('Failed to save settings.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const previewUrl = faviconUrl || '/vite.svg';
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={onClose}>
+      <div
+        className="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-6 w-full max-w-sm mx-4"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Profile Settings</h2>
+
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              Browser Tab Icon (favicon URL)
+            </label>
+            <div className="flex items-center gap-2">
+              <img
+                src={previewUrl}
+                alt="favicon preview"
+                className="w-8 h-8 rounded object-contain flex-shrink-0 border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700"
+                onError={(e) => { e.target.src = '/vite.svg'; }}
+              />
+              <input
+                type="url"
+                value={faviconUrl}
+                onChange={(e) => setFaviconUrl(e.target.value)}
+                placeholder="https://example.com/icon.png"
+                className="flex-1 px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+              Leave empty to use the default icon.
+            </p>
+          </div>
+
+          {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
+        </div>
+
+        <div className="flex justify-end gap-2 mt-6">
+          <button
+            onClick={onClose}
+            className="px-4 py-2 text-sm text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 rounded-md hover:bg-gray-200 dark:hover:bg-gray-600"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={handleSave}
+            disabled={saving}
+            className="px-4 py-2 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50"
+          >
+            {saving ? 'Saving...' : 'Save'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function DashboardHeader({ isEditing, onToggleEdit, onAddWidget }) {
   const { user, logout } = useAuth();
   const { darkMode, toggleDarkMode } = useTheme();
+  const [showSettings, setShowSettings] = useState(false);
 
   return (
     <header className="bg-white dark:bg-gray-800 shadow sticky top-0 z-40">
@@ -68,6 +147,18 @@ export default function DashboardHeader({ isEditing, onToggleEdit, onAddWidget }
             <span className="text-sm text-gray-600 dark:text-gray-400 hidden sm:inline">
               {user?.display_name || user?.email}
             </span>
+
+            <button
+              onClick={() => setShowSettings(true)}
+              className="p-2 text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-md"
+              title="Profile Settings"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+              </svg>
+            </button>
+
             <button
               onClick={logout}
               className="p-2 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-md"
@@ -80,6 +171,8 @@ export default function DashboardHeader({ isEditing, onToggleEdit, onAddWidget }
           </div>
         </div>
       </div>
+
+      {showSettings && <ProfileSettingsModal onClose={() => setShowSettings(false)} />}
     </header>
   );
 }

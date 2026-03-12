@@ -44,6 +44,57 @@ export function AuthProvider({ children }) {
     }
   }, [user]);
 
+  // Update favicon based on user preference, with local cache fallback
+  useEffect(() => {
+    const link = document.querySelector("link[rel~='icon']");
+    if (!link) return;
+
+    const faviconUrl = user?.favicon_url;
+
+    if (!faviconUrl) {
+      localStorage.removeItem('favicon_cache');
+      link.href = '/vite.svg';
+      return;
+    }
+
+    // Apply cached version immediately so there's no flicker
+    const cached = localStorage.getItem('favicon_cache');
+    if (cached) {
+      try {
+        const { url, dataUrl } = JSON.parse(cached);
+        if (url === faviconUrl) {
+          link.href = dataUrl;
+        }
+      } catch {
+        localStorage.removeItem('favicon_cache');
+      }
+    }
+
+    // Fetch and cache as data URL
+    fetch(faviconUrl)
+      .then((res) => res.blob())
+      .then((blob) => {
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          const dataUrl = reader.result;
+          try {
+            localStorage.setItem('favicon_cache', JSON.stringify({ url: faviconUrl, dataUrl }));
+          } catch {
+            // localStorage full — skip caching
+          }
+          link.href = dataUrl;
+        };
+        reader.readAsDataURL(blob);
+      })
+      .catch(() => {
+        // Fetch failed — keep cached version if available, else use original URL
+        const cached = localStorage.getItem('favicon_cache');
+        if (!cached) {
+          link.href = faviconUrl;
+        }
+      });
+  }, [user?.favicon_url]);
+
   const login = async (email, password) => {
     const response = await api.post('/auth/login', { email, password });
     localStorage.setItem('access_token', response.data.access_token);
@@ -72,7 +123,14 @@ export function AuthProvider({ children }) {
     }
     localStorage.removeItem('access_token');
     localStorage.removeItem('refresh_token');
+    localStorage.removeItem('favicon_cache');
     setUser(null);
+  };
+
+  const updateUser = async (updates) => {
+    const response = await api.patch('/auth/me', updates);
+    setUser(response.data);
+    return response.data;
   };
 
   const refreshToken = async () => {
@@ -100,6 +158,7 @@ export function AuthProvider({ children }) {
     register,
     logout,
     refreshToken,
+    updateUser,
     isAuthenticated: !!user
   };
 
