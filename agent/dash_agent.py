@@ -26,11 +26,13 @@ import json
 import logging
 import os
 import signal
+import socket
 import sys
 import time
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
+import subprocess
 
 import psutil
 
@@ -301,6 +303,35 @@ def collect_system_metrics() -> dict:
     }
 
 
+def collect_primary_mac_address() -> str | None:
+    """Return the first non-loopback MAC address from an active interface."""
+    stats = psutil.net_if_stats()
+    link_families = set()
+    for name in ("AF_LINK", "AF_PACKET"):
+        family = getattr(psutil, name, None)
+        if family is not None:
+            link_families.add(family)
+    if hasattr(socket, "AF_LINK"):
+        link_families.add(socket.AF_LINK)
+    if hasattr(socket, "AF_PACKET"):
+        link_families.add(socket.AF_PACKET)
+
+    for iface, addrs in psutil.net_if_addrs().items():
+        iface_stats = stats.get(iface)
+        if iface == "lo" or not iface_stats or not iface_stats.isup:
+            continue
+
+        for addr in addrs:
+            if addr.family not in link_families:
+                continue
+
+            mac = (addr.address or "").strip().lower().replace("-", ":")
+            if len(mac) == 17 and mac != "00:00:00:00:00:00":
+                return mac
+
+    return None
+
+
 # ---------------------------------------------------------------------------
 # Docker Container Stats
 # ---------------------------------------------------------------------------
@@ -408,28 +439,59 @@ def collect_process_stats(process_configs: list[dict]) -> list[dict]:
         found_pid = None
 
         try:
-            # Search for matching processes
-            for proc in psutil.process_iter(['pid', 'name', 'cmdline', 'cpu_percent', 'memory_info']):
+            if match_pattern.strip().endswith(".service"):
+                service = match_pattern.strip()
                 try:
-                    proc_name = proc.info['name'] or ""
-                    cmdline = " ".join(proc.info['cmdline'] or [])
+                    status = subprocess.run(
+                        ["systemctl", "is-active", service],
+                        capture_output=True,
+                        text=True,
+                        timeout=5,
+                    )
+                    is_running = status.returncode == 0 and status.stdout.strip() == "active"
+                    if is_running:
+                        pid_result = subprocess.run(
+                            ["systemctl", "show", "-p", "MainPID", "--value", service],
+                            capture_output=True,
+                            text=True,
+                            timeout=5,
+                        )
+                        pid_str = pid_result.stdout.strip()
+                        if pid_str.isdigit():
+                            found_pid = int(pid_str)
+                            if found_pid > 0:
+                                try:
+                                    proc = psutil.Process(found_pid)
+                                    total_cpu = proc.cpu_percent(interval=0.1)
+                                    mem_info = proc.memory_info()
+                                    total_memory = mem_info.rss // (1024 * 1024)
+                                except (psutil.NoSuchProcess, psutil.AccessDenied):
+                                    found_pid = None
+                except Exception:
+                    is_running = False
+            else:
+                # Search for matching processes
+                for proc in psutil.process_iter(['pid', 'name', 'cmdline', 'cpu_percent', 'memory_info']):
+                    try:
+                        proc_name = proc.info['name'] or ""
+                        cmdline = " ".join(proc.info['cmdline'] or [])
 
-                    # Check if match pattern is in process name or command line
-                    if match_pattern.lower() in proc_name.lower() or match_pattern.lower() in cmdline.lower():
-                        is_running = True
-                        found_pid = proc.info['pid']
+                        # Check if match pattern is in process name or command line
+                        if match_pattern.lower() in proc_name.lower() or match_pattern.lower() in cmdline.lower():
+                            is_running = True
+                            found_pid = proc.info['pid']
 
-                        # Get CPU percentage (one-shot)
-                        cpu = proc.cpu_percent(interval=0.1)
-                        total_cpu += cpu
+                            # Get CPU percentage (one-shot)
+                            cpu = proc.cpu_percent(interval=0.1)
+                            total_cpu += cpu
 
-                        # Get memory in MB
-                        mem_info = proc.info.get('memory_info')
-                        if mem_info:
-                            total_memory += mem_info.rss // (1024 * 1024)
+                            # Get memory in MB
+                            mem_info = proc.info.get('memory_info')
+                            if mem_info:
+                                total_memory += mem_info.rss // (1024 * 1024)
 
-                except (psutil.NoSuchProcess, psutil.AccessDenied):
-                    continue
+                    except (psutil.NoSuchProcess, psutil.AccessDenied):
+                        continue
 
         except Exception as e:
             logger.warning("Error collecting stats for process %s: %s", process_name, e)
@@ -671,6 +733,7 @@ def main() -> None:
 
             payload = {
                 "server_id": config.server_id,
+                "mac_address": collect_primary_mac_address(),
                 "metrics": metrics,
                 "containers": containers,
                 "processes": processes,

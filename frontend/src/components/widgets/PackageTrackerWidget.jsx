@@ -696,13 +696,16 @@ export default function PackageTrackerWidget({ config }) {
   const [packageToDelete, setPackageToDelete] = useState(null);
   const [packageToViewEmail, setPackageToViewEmail] = useState(null);
 
+  const [showDelivered, setShowDelivered] = useState(config.show_delivered || false);
+
   const { data, loading, error, refresh } = useWidgetData({
     endpoint: '/packages',
-    params: { include_delivered: config.show_delivered || false },
+    params: { include_delivered: showDelivered },
     refreshInterval: config.refresh_interval || 300,
   });
 
   const packages = data || [];
+  const deliveredCount = packages.filter(p => p.delivered).length;
 
   useEffect(() => {
     fetchEmailAccounts();
@@ -727,6 +730,15 @@ export default function PackageTrackerWidget({ config }) {
     } catch (err) {
       console.error('Manual scan failed:', err);
       alert(err.response?.data?.detail || 'Failed to scan email');
+    }
+  };
+
+  const handleClearDelivered = async () => {
+    try {
+      await api.delete('/packages/delivered');
+      refresh();
+    } catch (err) {
+      console.error('Clear delivered failed:', err);
     }
   };
 
@@ -782,11 +794,27 @@ export default function PackageTrackerWidget({ config }) {
             {packages.length} package{packages.length !== 1 ? 's' : ''}
           </span>
           <div className="flex items-center gap-2">
+            {showDelivered && deliveredCount > 0 && (
+              <button
+                onClick={handleClearDelivered}
+                className="text-xs text-red-500 hover:text-red-600 dark:text-red-400 dark:hover:text-red-300"
+                title="Remove all delivered packages"
+              >
+                Clear delivered ({deliveredCount})
+              </button>
+            )}
+            <button
+              onClick={() => setShowDelivered(v => !v)}
+              className="text-xs text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+              title={showDelivered ? 'Hide delivered packages' : 'Show delivered packages'}
+            >
+              {showDelivered ? 'Hide delivered' : 'Show delivered'}
+            </button>
             <button
               onClick={() => setShowAddModal(true)}
               className="text-xs text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300"
             >
-              + Add Package
+              + Add
             </button>
           </div>
         </div>

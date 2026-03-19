@@ -6,6 +6,7 @@ from app.api.v1.endpoints.email_scanner import scan_imap_email
 from app.crud.package import (
     add_event,
     create_package,
+    delete_delivered_packages,
     delete_package,
     get_events,
     get_package_by_id_and_user,
@@ -78,6 +79,16 @@ def update_package_details(
 
     updated = update_package(db, package, update_data)
     return PackageResponse.model_validate(updated)
+
+
+@router.delete("/delivered", status_code=status.HTTP_200_OK)
+def clear_delivered_packages(
+    db: DbSession,
+    current_user: CurrentActiveUser,
+):
+    """Delete all delivered packages for the current user."""
+    count = delete_delivered_packages(db, current_user.id)
+    return {"deleted": count}
 
 
 @router.delete("/{package_id}", status_code=status.HTTP_204_NO_CONTENT)

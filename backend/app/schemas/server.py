@@ -10,6 +10,12 @@ class ServerCreate(BaseModel):
     ip_address: Optional[str] = Field(None, max_length=45)
     mac_address: Optional[str] = Field(None, max_length=17)
     poll_interval: int = Field(60, ge=10, le=3600)
+    ssh_host: Optional[str] = Field(None, max_length=255)
+    ssh_port: Optional[int] = Field(22, ge=1, le=65535)
+    ssh_user: Optional[str] = Field("root", min_length=1, max_length=100)
+    ssh_password: Optional[str] = None
+    ssh_key: Optional[str] = None
+    sudo_password: Optional[str] = None
 
 
 class ServerResponse(BaseModel):
@@ -20,6 +26,12 @@ class ServerResponse(BaseModel):
     ip_address: Optional[str]
     mac_address: Optional[str]
     poll_interval: int
+    ssh_host: Optional[str]
+    ssh_port: Optional[int]
+    ssh_user: Optional[str]
+    has_password: bool = False
+    has_key: bool = False
+    has_sudo_password: bool = False
     is_online: bool
     last_seen: Optional[datetime]
     created_at: datetime
@@ -31,6 +43,31 @@ class ServerCreateResponse(BaseModel):
     """Response when creating a server - includes the raw API key (only shown once)."""
     server: ServerResponse
     api_key: str = Field(..., description="Save this key - it will not be shown again")
+
+
+class ServerUpdate(BaseModel):
+    """Schema for updating a server."""
+    name: Optional[str] = Field(None, min_length=1, max_length=100)
+    hostname: Optional[str] = Field(None, max_length=255)
+    ip_address: Optional[str] = Field(None, max_length=45)
+    mac_address: Optional[str] = Field(None, max_length=17)
+    poll_interval: Optional[int] = Field(None, ge=10, le=3600)
+    ssh_host: Optional[str] = Field(None, max_length=255)
+    ssh_port: Optional[int] = Field(None, ge=1, le=65535)
+    ssh_user: Optional[str] = Field(None, min_length=1, max_length=100)
+    ssh_password: Optional[str] = None
+    ssh_key: Optional[str] = None
+    sudo_password: Optional[str] = None
+
+
+class ServerCredentialsUpdate(BaseModel):
+    """Schema for updating server SSH credentials only."""
+    ssh_host: Optional[str] = Field(None, max_length=255)
+    ssh_port: Optional[int] = Field(None, ge=1, le=65535)
+    ssh_user: Optional[str] = Field(None, min_length=1, max_length=100)
+    ssh_password: Optional[str] = None
+    ssh_key: Optional[str] = None
+    sudo_password: Optional[str] = None
 
 
 class ContainerInfo(BaseModel):
@@ -80,6 +117,7 @@ class MetricsData(BaseModel):
 class MetricsPayload(BaseModel):
     """Schema for metrics report from agent."""
     server_id: int
+    mac_address: Optional[str] = Field(None, max_length=17)
     metrics: MetricsData
     containers: list[ContainerInfo] = []
     processes: list[ProcessInfo] = []
@@ -218,9 +256,24 @@ class DeployRequest(BaseModel):
     install_dir: str = "/opt/dash-agent"
     env_dir: str = "/etc/dash-agent"
     service_name: str = "dash-agent"
+    use_saved_creds: bool = False
 
 
 class DeployResponse(BaseModel):
     """Schema for SSH deployment response."""
     success: bool
     log: list[str]
+
+
+class ServiceActionRequest(BaseModel):
+    """Schema for service control actions."""
+    service_name: str = Field(..., min_length=1, max_length=255)
+    action: str = Field(..., pattern="^(start|stop|restart)$")
+
+
+class ServiceActionResponse(BaseModel):
+    """Schema for service control response."""
+    success: bool
+    used_sudo: bool
+    stdout: str
+    stderr: str

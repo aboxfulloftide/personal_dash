@@ -646,6 +646,23 @@ async def scan_imap_email(
                                 tracking_url=tracking_url,
                             ))
 
+                    # Handle delivery confirmations with no extractable tracking number.
+                    # Very common with Amazon — the delivery email body contains only
+                    # an order ID, not the TBA tracking number. Still emit a
+                    # DeliveryConfirmation so the scheduler can attempt subject-similarity
+                    # matching against existing packages.
+                    if not found and is_delivered:
+                        delivery_confirmations.append(DeliveryConfirmation(
+                            tracking_number="",  # empty — scheduler will match by subject
+                            carrier="other",
+                            delivered_date=date_str or datetime.now().isoformat(),
+                            found_in_subject=subject[:100],
+                            found_in_email=sender,
+                            email_sender=sender,
+                            email_body_snippet=body[:1000],
+                            tracking_url=None,
+                        ))
+
                     # NEW: Handle shipping notifications without tracking numbers
                     # If no tracking numbers found BUT email indicates shipping, use order number
                     if not found and not is_delivered:

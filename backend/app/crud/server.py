@@ -4,7 +4,8 @@ from sqlalchemy.orm import Session
 from sqlalchemy import select, delete
 
 from app.models.server import Server, ServerMetric, DockerContainer, MonitoredProcess, MonitoredDrive, ProcessPreset
-from app.schemas.server import ServerCreate, MetricsData, ContainerInfo, ProcessInfo, ProcessCreate, DriveInfo, DriveCreate, ProcessPresetCreate
+from app.schemas.server import ServerCreate, ServerUpdate, MetricsData, ContainerInfo, ProcessInfo, ProcessCreate, DriveInfo, DriveCreate, ProcessPresetCreate
+from app.core.encryption import encrypt_password, decrypt_password
 from app.core.security import get_password_hash
 
 
@@ -25,6 +26,12 @@ def create_server(db: Session, user_id: int, server_in: ServerCreate) -> tuple[S
         ip_address=server_in.ip_address,
         mac_address=server_in.mac_address,
         poll_interval=server_in.poll_interval,
+        ssh_host=server_in.ssh_host,
+        ssh_port=server_in.ssh_port or 22,
+        ssh_user=server_in.ssh_user or "root",
+        ssh_password_enc=encrypt_password(server_in.ssh_password) if server_in.ssh_password else None,
+        ssh_key=server_in.ssh_key,
+        sudo_password_enc=encrypt_password(server_in.sudo_password) if server_in.sudo_password else None,
         api_key_hash=api_key_hash,
         is_online=False,
     )
@@ -65,6 +72,35 @@ def delete_server(db: Session, server_id: int) -> bool:
     return True
 
 
+def update_server(db: Session, server: Server, server_in: ServerUpdate) -> Server:
+    """Update server details, including SSH credentials."""
+    if server_in.name is not None:
+        server.name = server_in.name
+    if server_in.hostname is not None:
+        server.hostname = server_in.hostname
+    if server_in.ip_address is not None:
+        server.ip_address = server_in.ip_address
+    if server_in.mac_address is not None:
+        server.mac_address = server_in.mac_address
+    if server_in.poll_interval is not None:
+        server.poll_interval = server_in.poll_interval
+    if server_in.ssh_host is not None:
+        server.ssh_host = server_in.ssh_host
+    if server_in.ssh_port is not None:
+        server.ssh_port = server_in.ssh_port
+    if server_in.ssh_user is not None:
+        server.ssh_user = server_in.ssh_user
+    if server_in.ssh_password is not None:
+        server.ssh_password_enc = encrypt_password(server_in.ssh_password)
+    if server_in.ssh_key is not None:
+        server.ssh_key = server_in.ssh_key
+    if server_in.sudo_password is not None:
+        server.sudo_password_enc = encrypt_password(server_in.sudo_password)
+    db.commit()
+    db.refresh(server)
+    return server
+
+
 def update_server_status(db: Session, server_id: int, is_online: bool) -> None:
     """Update server online status and last_seen timestamp."""
     server = db.get(Server, server_id)
@@ -72,6 +108,32 @@ def update_server_status(db: Session, server_id: int, is_online: bool) -> None:
         server.is_online = is_online
         server.last_seen = datetime.now(timezone.utc).replace(tzinfo=None)
         db.commit()
+
+
+def update_server_mac_address(db: Session, server: Server, mac_address: str | None) -> None:
+    """Store the latest MAC address reported by the agent."""
+    if not mac_address:
+        return
+
+    normalized = mac_address.strip().lower()
+    if not normalized:
+        return
+
+    if server.mac_address != normalized:
+        server.mac_address = normalized
+        db.commit()
+
+
+def get_server_ssh_password(server: Server) -> str | None:
+    if server.ssh_password_enc:
+        return decrypt_password(server.ssh_password_enc)
+    return None
+
+
+def get_server_sudo_password(server: Server) -> str | None:
+    if server.sudo_password_enc:
+        return decrypt_password(server.sudo_password_enc)
+    return None
 
 
 def record_metrics(db: Session, server_id: int, metrics: MetricsData) -> ServerMetric:
@@ -86,6 +148,7 @@ def record_metrics(db: Session, server_id: int, metrics: MetricsData) -> ServerM
         network_in=metrics.network_in,
         network_out=metrics.network_out,
         temperatures_json=temperatures_json,
+        recorded_at=datetime.now(timezone.utc).replace(tzinfo=None),
     )
     db.add(metric)
     db.commit()
@@ -149,7 +212,7 @@ def get_recent_metrics(db: Session, server_id: int, limit: int = 60) -> list[Ser
 
 def get_metrics_by_timerange(db: Session, server_id: int, hours: int = 1) -> list[ServerMetric]:
     """Get metrics for a server within the last N hours, ordered oldest first."""
-    cutoff = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(hours=hours)
+    cutoff = datetime.now() - timedelta(hours=hours)
     result = db.execute(
         select(ServerMetric)
         .where(ServerMetric.server_id == server_id, ServerMetric.recorded_at >= cutoff)

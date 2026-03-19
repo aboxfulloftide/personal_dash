@@ -9,6 +9,7 @@ class Settings(BaseSettings):
     # Database
     DATABASE_URL: str
     WEATHER_DB_URL: str = ""  # Connection string for external weather database
+    WIRELESS_DB_URL: str = ""  # Connection string for wireless/ESP32 scanner database
 
     # Server
     HOST: str = "127.0.0.1"

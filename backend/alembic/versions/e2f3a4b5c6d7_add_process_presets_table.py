@@ -27,6 +27,7 @@ BUILTIN_PRESETS = [
     # Personal Dash
     ("Personal Dash", "Dash Backend", "personal_dash",  "FastAPI backend for this dashboard (personal-dash-backend.service)",      10),
     ("Personal Dash", "Dash Agent",   "dash_agent.py",  "Monitoring agent reporting metrics to this dashboard (dash-agent.service)", 20),
+    ("Personal Dash", "Dash Frontend","personal-dash-frontend.service", "Frontend web UI service (personal-dash-frontend.service)", 30),
     # air_scan — server
     ("air_scan — server", "air-scan API",    "uvicorn api.main:app",  "air_scan FastAPI backend on port 8002 (air-scan-api.service)",            10),
     ("air_scan — server", "Pull scanner",    "pull_scanner.py",       "Pulls scan data from OpenWrt router every 60s (air-scan-pull.service)",   20),

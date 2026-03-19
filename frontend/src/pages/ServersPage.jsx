@@ -40,6 +40,26 @@ function tempEmoji(celsius) {
   return '❄️';
 }
 
+// ESP32 thresholds — chip rated to ~85°C max, warn earlier
+function esp32TempColor(celsius) {
+  if (celsius == null) return 'text-blue-600 dark:text-blue-400';
+  if (celsius >= 70) return 'text-red-500 dark:text-red-400';
+  if (celsius >= 60) return 'text-yellow-600 dark:text-yellow-400';
+  return 'text-blue-600 dark:text-blue-400';
+}
+
+function esp32TempBg(celsius) {
+  if (celsius >= 70) return 'bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800';
+  if (celsius >= 60) return 'bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800';
+  return 'bg-gray-50 dark:bg-gray-700/50';
+}
+
+function esp32TempEmoji(celsius) {
+  if (celsius >= 70) return '🌡️';
+  if (celsius >= 60) return '🔥';
+  return '❄️';
+}
+
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function formatBytes(bytes) {
@@ -270,6 +290,57 @@ function DeleteConfirmModal({ isOpen, onClose, server, onConfirm }) {
   );
 }
 
+function PowerActionConfirmModal({ isOpen, onClose, server, action, onConfirm, error }) {
+  const [submitting, setSubmitting] = useState(false);
+  if (!isOpen || !server) return null;
+
+  const isReboot = action === 'reboot';
+  const title = isReboot ? 'Reboot Server?' : 'Power Down Server?';
+  const verb = isReboot ? 'reboot' : 'shutdown';
+  const buttonLabel = isReboot ? 'Reboot' : 'Power Down';
+  const busyLabel = isReboot ? 'Rebooting...' : 'Powering Down...';
+  const buttonClass = isReboot ? 'bg-blue-600 hover:bg-blue-700' : 'bg-amber-600 hover:bg-amber-700';
+  const noteClass = isReboot
+    ? 'text-blue-700 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800'
+    : 'text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800';
+  const noteText = isReboot
+    ? 'This will immediately begin restarting the machine if authentication and sudo access succeed.'
+    : 'This will immediately begin powering off the machine if authentication and sudo access succeed.';
+
+  const handleConfirm = async () => {
+    setSubmitting(true);
+    await onConfirm();
+    setSubmitting(false);
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+      <div className="bg-white dark:bg-gray-800 rounded-lg p-6 w-full max-w-md mx-4">
+        <h3 className="text-lg font-semibold mb-4 text-gray-900 dark:text-white">{title}</h3>
+        <p className="text-gray-600 dark:text-gray-400 mb-4">
+          Send a {verb} command to <strong>{server.name}</strong> using its saved SSH credentials.
+        </p>
+        <p className={`text-sm border rounded-md p-3 mb-4 ${noteClass}`}>
+          {noteText}
+        </p>
+        {error && (
+          <div className="mb-4 p-3 bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 rounded-md text-sm">
+            {error}
+          </div>
+        )}
+        <div className="flex gap-2">
+          <button onClick={onClose} disabled={submitting} className="flex-1 px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 rounded-md hover:bg-gray-200 dark:hover:bg-gray-600 disabled:opacity-50">
+            Cancel
+          </button>
+          <button onClick={handleConfirm} disabled={submitting} className={`flex-1 px-4 py-2 text-sm font-medium text-white rounded-md disabled:opacity-50 ${buttonClass}`}>
+            {submitting ? busyLabel : buttonLabel}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Sparkline (tiny inline chart) ───────────────────────────────────────────
 
 function Sparkline({ data, dataKey, color }) {
@@ -285,21 +356,24 @@ function Sparkline({ data, dataKey, color }) {
 
 // ─── Metric Card ──────────────────────────────────────────────────────────────
 
-function MetricCard({ label, value, unit, pct, sparkData, sparkKey, sparkColor }) {
+function MetricCard({ label, value, unit, pct, sparkData, sparkKey, sparkColor, isStale }) {
   return (
     <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-4 flex flex-col gap-2">
       <div className="flex items-center justify-between">
-        <span className="text-sm font-medium text-gray-500 dark:text-gray-400">{label}</span>
-        <span className={`text-2xl font-bold ${metricColor(pct)}`}>
+        <span className="text-sm font-medium text-gray-500 dark:text-gray-400 flex items-center gap-2">
+          {label}
+          {isStale && <span className="text-[10px] uppercase tracking-wider text-gray-400 dark:text-gray-500">Stale</span>}
+        </span>
+        <span className={`text-2xl font-bold ${isStale ? 'text-gray-400 dark:text-gray-500' : metricColor(pct)}`}>
           {value != null ? value : '—'}{unit && value != null ? unit : ''}
         </span>
       </div>
       {pct != null && (
         <div className="w-full bg-gray-200 dark:bg-gray-600 rounded-full h-1.5">
-          <div className={`h-1.5 rounded-full ${metricBarColor(pct)}`} style={{ width: `${Math.min(pct, 100)}%` }} />
+          <div className={`h-1.5 rounded-full ${isStale ? 'bg-gray-300 dark:bg-gray-500' : metricBarColor(pct)}`} style={{ width: `${Math.min(pct, 100)}%` }} />
         </div>
       )}
-      {sparkData && <Sparkline data={sparkData} dataKey={sparkKey} color={sparkColor} />}
+      {sparkData && <Sparkline data={sparkData} dataKey={sparkKey} color={isStale ? '#9ca3af' : sparkColor} />}
     </div>
   );
 }
@@ -310,6 +384,7 @@ function OverviewTab({ server, detail, tempUnit }) {
   const latest = detail?.recent_metrics?.[0];
   // recent_metrics is ordered desc from backend, reverse for sparkline (oldest→newest)
   const sparkData = detail?.recent_metrics ? [...detail.recent_metrics].reverse() : [];
+  const isStale = !server?.is_online;
 
   return (
     <div className="space-y-6">
@@ -324,25 +399,35 @@ function OverviewTab({ server, detail, tempUnit }) {
         {server.hostname && <span className="text-sm text-gray-500 dark:text-gray-400">Host: <span className="font-mono text-gray-700 dark:text-gray-300">{server.hostname}</span></span>}
         {server.ip_address && <span className="text-sm text-gray-500 dark:text-gray-400">IP: <span className="font-mono text-gray-700 dark:text-gray-300">{server.ip_address}</span></span>}
         {server.last_seen && <span className="text-sm text-gray-500 dark:text-gray-400">Last seen: <span className="text-gray-700 dark:text-gray-300">{formatRelativeTime(server.last_seen)}</span></span>}
+        {latest?.recorded_at && (
+          <span className="text-sm text-gray-500 dark:text-gray-400">
+            Last metrics: <span className="text-gray-700 dark:text-gray-300">{formatRelativeTime(latest.recorded_at)}</span>
+          </span>
+        )}
         <span className="text-sm text-gray-500 dark:text-gray-400">Poll: <span className="text-gray-700 dark:text-gray-300">{server.poll_interval}s</span></span>
       </div>
+      {isStale && (
+        <div className="text-sm text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-700/50 border border-gray-200 dark:border-gray-600 rounded-md px-3 py-2">
+          Metrics and status below are the last reported values.
+        </div>
+      )}
 
       {/* Metric cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <MetricCard label="CPU" value={latest?.cpu_percent?.toFixed(1)} unit="%" pct={latest?.cpu_percent} sparkData={sparkData} sparkKey="cpu_percent" sparkColor="#3b82f6" />
-        <MetricCard label="Memory" value={latest?.memory_percent?.toFixed(1)} unit="%" pct={latest?.memory_percent} sparkData={sparkData} sparkKey="memory_percent" sparkColor="#8b5cf6" />
-        <MetricCard label="Disk" value={latest?.disk_percent?.toFixed(1)} unit="%" pct={latest?.disk_percent} sparkData={sparkData} sparkKey="disk_percent" sparkColor="#f59e0b" />
+        <MetricCard label="CPU" value={latest?.cpu_percent?.toFixed(1)} unit="%" pct={latest?.cpu_percent} sparkData={sparkData} sparkKey="cpu_percent" sparkColor="#3b82f6" isStale={isStale} />
+        <MetricCard label="Memory" value={latest?.memory_percent?.toFixed(1)} unit="%" pct={latest?.memory_percent} sparkData={sparkData} sparkKey="memory_percent" sparkColor="#8b5cf6" isStale={isStale} />
+        <MetricCard label="Disk" value={latest?.disk_percent?.toFixed(1)} unit="%" pct={latest?.disk_percent} sparkData={sparkData} sparkKey="disk_percent" sparkColor="#f59e0b" isStale={isStale} />
         <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-4 flex flex-col gap-2">
           <span className="text-sm font-medium text-gray-500 dark:text-gray-400">Network</span>
           <div className="space-y-1">
             <div className="flex items-center gap-1 text-sm">
-              <span className="text-blue-500">↓</span>
-              <span className="font-mono text-gray-700 dark:text-gray-300">{formatBytes(latest?.network_in)}</span>
+              <span className={isStale ? 'text-gray-400 dark:text-gray-500' : 'text-blue-500'}>↓</span>
+              <span className={`font-mono ${isStale ? 'text-gray-400 dark:text-gray-500' : 'text-gray-700 dark:text-gray-300'}`}>{formatBytes(latest?.network_in)}</span>
               <span className="text-xs text-gray-400">recv</span>
             </div>
             <div className="flex items-center gap-1 text-sm">
-              <span className="text-green-500">↑</span>
-              <span className="font-mono text-gray-700 dark:text-gray-300">{formatBytes(latest?.network_out)}</span>
+              <span className={isStale ? 'text-gray-400 dark:text-gray-500' : 'text-green-500'}>↑</span>
+              <span className={`font-mono ${isStale ? 'text-gray-400 dark:text-gray-500' : 'text-gray-700 dark:text-gray-300'}`}>{formatBytes(latest?.network_out)}</span>
               <span className="text-xs text-gray-400">sent</span>
             </div>
           </div>
@@ -379,8 +464,10 @@ function OverviewTab({ server, detail, tempUnit }) {
           <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">Monitored Processes</h3>
           <div className="flex flex-wrap gap-2">
             {detail.processes.map((p) => (
-              <span key={p.id} className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${p.is_running ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400' : 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400'}`}>
-                <span className={`w-1.5 h-1.5 rounded-full ${p.is_running ? 'bg-green-500' : 'bg-red-500'}`} />
+              <span key={p.id} className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${
+                isStale ? 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400' : (p.is_running ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400' : 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400')
+              }`}>
+                <span className={`w-1.5 h-1.5 rounded-full ${isStale ? 'bg-gray-400' : (p.is_running ? 'bg-green-500' : 'bg-red-500')}`} />
                 {p.process_name}
               </span>
             ))}
@@ -397,14 +484,14 @@ function OverviewTab({ server, detail, tempUnit }) {
               <div key={d.id} className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-3">
                 <div className="flex items-center justify-between mb-1">
                   <span className="font-mono text-sm text-gray-700 dark:text-gray-300">{d.mount_point}</span>
-                  <span className={`text-sm font-medium ${metricColor(d.percent_used)}`}>
+                  <span className={`text-sm font-medium ${isStale ? 'text-gray-400 dark:text-gray-500' : metricColor(d.percent_used)}`}>
                     {d.percent_used != null ? `${d.percent_used.toFixed(0)}%` : '—'}
                   </span>
                 </div>
                 <div className="w-full bg-gray-200 dark:bg-gray-600 rounded-full h-1.5">
-                  <div className={`h-1.5 rounded-full ${metricBarColor(d.percent_used)}`} style={{ width: `${Math.min(d.percent_used ?? 0, 100)}%` }} />
+                  <div className={`h-1.5 rounded-full ${isStale ? 'bg-gray-300 dark:bg-gray-500' : metricBarColor(d.percent_used)}`} style={{ width: `${Math.min(d.percent_used ?? 0, 100)}%` }} />
                 </div>
-                <div className="text-xs text-gray-400 mt-1">{formatBytes(d.used_bytes)} / {formatBytes(d.total_bytes)}</div>
+                <div className={`text-xs ${isStale ? 'text-gray-400 dark:text-gray-500' : 'text-gray-400'} mt-1`}>{formatBytes(d.used_bytes)} / {formatBytes(d.total_bytes)}</div>
               </div>
             ))}
           </div>
@@ -417,8 +504,10 @@ function OverviewTab({ server, detail, tempUnit }) {
           <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">Docker Containers</h3>
           <div className="flex flex-wrap gap-2">
             {detail.containers.map((c) => (
-              <span key={c.id} className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${c.status === 'running' ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400' : 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400'}`}>
-                <span className={`w-1.5 h-1.5 rounded-full ${c.status === 'running' ? 'bg-green-500' : 'bg-gray-400'}`} />
+              <span key={c.id} className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${
+                isStale ? 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400' : (c.status === 'running' ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400' : 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400')
+              }`}>
+                <span className={`w-1.5 h-1.5 rounded-full ${isStale ? 'bg-gray-400' : (c.status === 'running' ? 'bg-green-500' : 'bg-gray-400')}`} />
                 {c.name || c.container_id.slice(0, 12)}
               </span>
             ))}
@@ -742,13 +831,15 @@ function AddProcessModal({ isOpen, onClose, onAdd }) {
   );
 }
 
-function ProcessesTab({ serverId, processes, onRefresh }) {
+function ProcessesTab({ server, processes, onRefresh }) {
   const [showAdd, setShowAdd] = useState(false);
   const [deleting, setDeleting] = useState(null);
+  const [actioningId, setActioningId] = useState(null);
+  const [actionError, setActionError] = useState(null);
 
   const handleAdd = async (processData) => {
     try {
-      await api.post(`/servers/${serverId}/processes`, processData);
+      await api.post(`/servers/${server.id}/processes`, processData);
       onRefresh();
     } catch (err) {
       alert(err.response?.data?.detail || 'Failed to add process');
@@ -758,12 +849,34 @@ function ProcessesTab({ serverId, processes, onRefresh }) {
   const handleDelete = async (processId) => {
     setDeleting(processId);
     try {
-      await api.delete(`/servers/${serverId}/processes/${processId}`);
+      await api.delete(`/servers/${server.id}/processes/${processId}`);
       onRefresh();
-    } catch (err) {
+    } catch {
       alert('Failed to remove process');
     } finally {
       setDeleting(null);
+    }
+  };
+
+  const canControlServices = !!(server?.ssh_host || server?.hostname || server?.ip_address) && (server?.has_password || server?.has_key);
+
+  const handleServiceAction = async (process, action) => {
+    setActioningId(`${process.id}:${action}`);
+    setActionError(null);
+    try {
+      const res = await api.post(`/servers/${server.id}/service-action`, {
+        service_name: process.match_pattern,
+        action,
+      });
+      if (!res.data.success) {
+        setActionError(res.data.stderr || res.data.stdout || 'Service action failed');
+      } else {
+        onRefresh();
+      }
+    } catch (err) {
+      setActionError(err.response?.data?.detail || 'Service action failed');
+    } finally {
+      setActioningId(null);
     }
   };
 
@@ -776,6 +889,12 @@ function ProcessesTab({ serverId, processes, onRefresh }) {
           Add Process
         </button>
       </div>
+
+      {actionError && (
+        <div className="p-2 text-xs bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 rounded">
+          {actionError}
+        </div>
+      )}
 
       {processes.length === 0 ? (
         <div className="text-center py-12 text-gray-400 dark:text-gray-500">
@@ -794,12 +913,15 @@ function ProcessesTab({ serverId, processes, onRefresh }) {
                 <th className="pb-2 pr-4">Memory</th>
                 <th className="pb-2 pr-4">PID</th>
                 <th className="pb-2 pr-4">Updated</th>
+                <th className="pb-2 pr-4">Service</th>
                 <th className="pb-2" />
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
-              {processes.map((p) => (
-                <tr key={p.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/30">
+              {processes.map((p) => {
+                const serviceName = (p.match_pattern || '').trim().length > 0 ? p.match_pattern : p.process_name;
+                return (
+                  <tr key={p.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/30">
                   <td className="py-3 pr-4">
                     <div className={`flex items-center gap-1.5 ${p.is_running ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
                       <div className={`w-2 h-2 rounded-full ${p.is_running ? 'bg-green-500' : 'bg-red-500'}`} />
@@ -812,14 +934,30 @@ function ProcessesTab({ serverId, processes, onRefresh }) {
                   <td className="py-3 pr-4 text-gray-700 dark:text-gray-300">{p.memory_mb != null ? `${p.memory_mb} MB` : '—'}</td>
                   <td className="py-3 pr-4 font-mono text-gray-500 dark:text-gray-400">{p.pid ?? '—'}</td>
                   <td className="py-3 pr-4 text-gray-400 text-xs">{formatRelativeTime(p.updated_at)}</td>
+                  <td className="py-3 pr-4">
+                    <div className="flex items-center gap-1.5">
+                      {['start', 'stop', 'restart'].map((action) => (
+                        <button
+                          key={action}
+                          onClick={() => handleServiceAction({ ...p, match_pattern: serviceName }, action)}
+                          disabled={!canControlServices || actioningId === `${p.id}:${action}`}
+                          className="px-2 py-1 text-xs rounded border border-gray-200 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-600 disabled:opacity-50"
+                          title={canControlServices ? `${action} service` : 'Set SSH credentials in Setup tab'}
+                        >
+                          {actioningId === `${p.id}:${action}` ? '...' : action}
+                        </button>
+                      ))}
+                    </div>
+                  </td>
                   <td className="py-3">
                     <button onClick={() => handleDelete(p.id)} disabled={deleting === p.id}
                       className="text-red-500 hover:text-red-700 dark:hover:text-red-400 disabled:opacity-50 text-xs">
                       {deleting === p.id ? '...' : 'Remove'}
                     </button>
                   </td>
-                </tr>
-              ))}
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -998,7 +1136,7 @@ function DockerTab({ containers }) {
 
 // ─── Setup Tab ────────────────────────────────────────────────────────────────
 
-function SetupTab({ server, onDelete }) {
+function SetupTab({ server, onDelete, onRefresh }) {
   // Backend URL for the agent — derived from the page's hostname (= the server's IP)
   const [backendUrl, setBackendUrl] = useState(() => {
     const { protocol, hostname } = window.location;
@@ -1034,10 +1172,46 @@ DASH_LOG_LEVEL=INFO`;
     ssh_key: '',
     sudo_password: '',
     auth_method: 'password', // 'password' or 'key'
+    use_saved_creds: false,
   });
   const [deploying, setDeploying] = useState(false);
   const [deployLog, setDeployLog] = useState(null);
   const [deploySuccess, setDeploySuccess] = useState(null);
+  const [credForm, setCredForm] = useState(() => ({
+    ssh_host: server.ssh_host || server.hostname || server.ip_address || '',
+    ssh_port: server.ssh_port || 22,
+    ssh_user: server.ssh_user || 'root',
+    ssh_password: '',
+    ssh_key: '',
+    sudo_password: '',
+    auth_method: server.has_key ? 'key' : 'password',
+  }));
+  const [savingCreds, setSavingCreds] = useState(false);
+  const [credError, setCredError] = useState(null);
+  const [showPowerDownConfirm, setShowPowerDownConfirm] = useState(false);
+  const [showRebootConfirm, setShowRebootConfirm] = useState(false);
+  const [powerDownError, setPowerDownError] = useState(null);
+  const [powerDownMessage, setPowerDownMessage] = useState(null);
+
+  useEffect(() => {
+    setCredForm((prev) => ({
+      ...prev,
+      ssh_host: server.ssh_host || server.hostname || server.ip_address || '',
+      ssh_port: server.ssh_port || 22,
+      ssh_user: server.ssh_user || 'root',
+      auth_method: server.has_key ? 'key' : 'password',
+    }));
+  }, [server]);
+
+  useEffect(() => {
+    if (!sshForm.use_saved_creds) return;
+    setSshForm((prev) => ({
+      ...prev,
+      ssh_host: server.ssh_host || server.hostname || server.ip_address || '',
+      ssh_port: server.ssh_port || 22,
+      ssh_user: server.ssh_user || 'root',
+    }));
+  }, [server, sshForm.use_saved_creds]);
 
   const handleDeploy = async (e) => {
     e.preventDefault();
@@ -1050,6 +1224,7 @@ DASH_LOG_LEVEL=INFO`;
         ssh_port: sshForm.ssh_port,
         ssh_user: sshForm.ssh_user,
         backend_url: agentApiUrl || undefined,
+        use_saved_creds: sshForm.use_saved_creds,
         ...(sshForm.auth_method === 'password'
           ? { ssh_password: sshForm.ssh_password }
           : { ssh_key: sshForm.ssh_key, ...(sshForm.sudo_password ? { sudo_password: sshForm.sudo_password } : {}) }),
@@ -1062,6 +1237,57 @@ DASH_LOG_LEVEL=INFO`;
       setDeploySuccess(false);
     } finally {
       setDeploying(false);
+    }
+  };
+
+  const handleSaveCreds = async (e) => {
+    e.preventDefault();
+    setSavingCreds(true);
+    setCredError(null);
+    try {
+      const payload = {
+        ssh_host: credForm.ssh_host || null,
+        ssh_port: credForm.ssh_port,
+        ssh_user: credForm.ssh_user,
+        ...(credForm.auth_method === 'password'
+          ? { ssh_password: credForm.ssh_password }
+          : { ssh_key: credForm.ssh_key, ...(credForm.sudo_password ? { sudo_password: credForm.sudo_password } : {}) }),
+      };
+      await api.post(`/servers/${server.id}/credentials`, payload);
+      setCredForm((prev) => ({ ...prev, ssh_password: '', ssh_key: '', sudo_password: '' }));
+      onRefresh?.();
+    } catch (err) {
+      setCredError(err.response?.data?.detail || 'Failed to save credentials');
+    } finally {
+      setSavingCreds(false);
+    }
+  };
+
+  const canPowerDown = !!(server?.ssh_host || server?.hostname || server?.ip_address) && (server?.has_password || server?.has_key);
+
+  const handlePowerDown = async () => {
+    setPowerDownError(null);
+    setPowerDownMessage(null);
+    try {
+      const res = await api.post(`/servers/${server.id}/power-down`);
+      setPowerDownMessage(res.data.message || 'Power down command sent');
+      setShowPowerDownConfirm(false);
+      onRefresh?.();
+    } catch (err) {
+      setPowerDownError(err.response?.data?.detail || 'Failed to power down server');
+    }
+  };
+
+  const handleReboot = async () => {
+    setPowerDownError(null);
+    setPowerDownMessage(null);
+    try {
+      const res = await api.post(`/servers/${server.id}/reboot`);
+      setPowerDownMessage(res.data.message || 'Reboot command sent');
+      setShowRebootConfirm(false);
+      onRefresh?.();
+    } catch (err) {
+      setPowerDownError(err.response?.data?.detail || 'Failed to reboot server');
     }
   };
 
@@ -1123,14 +1349,14 @@ DASH_LOG_LEVEL=INFO`;
           <div className="grid grid-cols-3 gap-3">
             <div className="col-span-2">
               <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">SSH Host</label>
-              <input type="text" value={sshForm.ssh_host} required
+              <input type="text" value={sshForm.ssh_host} required disabled={sshForm.use_saved_creds}
                 onChange={(e) => setSshForm({ ...sshForm, ssh_host: e.target.value })}
                 placeholder="192.168.1.100"
                 className="w-full px-3 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white" />
             </div>
             <div>
               <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Port</label>
-              <input type="number" value={sshForm.ssh_port} min="1" max="65535"
+              <input type="number" value={sshForm.ssh_port} min="1" max="65535" disabled={sshForm.use_saved_creds}
                 onChange={(e) => setSshForm({ ...sshForm, ssh_port: parseInt(e.target.value) })}
                 className="w-full px-3 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white" />
             </div>
@@ -1138,10 +1364,38 @@ DASH_LOG_LEVEL=INFO`;
 
           <div>
             <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">SSH User</label>
-            <input type="text" value={sshForm.ssh_user} required
+            <input type="text" value={sshForm.ssh_user} required disabled={sshForm.use_saved_creds}
               onChange={(e) => setSshForm({ ...sshForm, ssh_user: e.target.value })}
               className="w-full px-3 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white" />
           </div>
+
+          <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
+            <span>Saved creds:</span>
+            <span className={server.has_password ? 'text-green-600 dark:text-green-400' : 'text-gray-400'}>
+              password {server.has_password ? '✓' : '—'}
+            </span>
+            <span className={server.has_key ? 'text-green-600 dark:text-green-400' : 'text-gray-400'}>
+              key {server.has_key ? '✓' : '—'}
+            </span>
+            <span className={server.has_sudo_password ? 'text-green-600 dark:text-green-400' : 'text-gray-400'}>
+              sudo {server.has_sudo_password ? '✓' : '—'}
+            </span>
+          </div>
+
+          <div className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-400">
+            <input
+              id="useSavedCreds"
+              type="checkbox"
+              checked={sshForm.use_saved_creds}
+              onChange={(e) => setSshForm({ ...sshForm, use_saved_creds: e.target.checked })}
+            />
+            <label htmlFor="useSavedCreds">Use saved service control credentials for deploy</label>
+          </div>
+          {sshForm.use_saved_creds && (
+            <p className="text-xs text-gray-500 dark:text-gray-400">
+              Deploy will use the saved SSH host, port, user, and credentials from the Service Control Credentials section below.
+            </p>
+          )}
 
           {/* Auth method toggle */}
           <div>
@@ -1157,13 +1411,13 @@ DASH_LOG_LEVEL=INFO`;
             </div>
 
             {sshForm.auth_method === 'password' ? (
-              <input type="password" value={sshForm.ssh_password} required
+              <input type="password" value={sshForm.ssh_password} required={!sshForm.use_saved_creds} disabled={sshForm.use_saved_creds}
                 onChange={(e) => setSshForm({ ...sshForm, ssh_password: e.target.value })}
                 placeholder="SSH password"
                 className="w-full px-3 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white" />
             ) : (
               <>
-                <textarea value={sshForm.ssh_key} required rows={6}
+                <textarea value={sshForm.ssh_key} required={!sshForm.use_saved_creds} disabled={sshForm.use_saved_creds} rows={6}
                   onChange={(e) => setSshForm({ ...sshForm, ssh_key: e.target.value })}
                   placeholder="-----BEGIN RSA PRIVATE KEY-----&#10;..."
                   className="w-full px-3 py-1.5 text-xs font-mono border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white" />
@@ -1216,14 +1470,163 @@ DASH_LOG_LEVEL=INFO`;
         )}
       </div>
 
+      {/* Service control credentials */}
+      <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-4">
+        <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">Service Control Credentials</h3>
+        <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
+          Stored credentials used to start/stop/restart services on this server.
+        </p>
+        <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400 mb-3">
+          <span>Saved:</span>
+          <span className={server.has_password ? 'text-green-600 dark:text-green-400' : 'text-gray-400'}>
+            password {server.has_password ? '✓' : '—'}
+          </span>
+          <span className={server.has_key ? 'text-green-600 dark:text-green-400' : 'text-gray-400'}>
+            key {server.has_key ? '✓' : '—'}
+          </span>
+          <span className={server.has_sudo_password ? 'text-green-600 dark:text-green-400' : 'text-gray-400'}>
+            sudo {server.has_sudo_password ? '✓' : '—'}
+          </span>
+        </div>
+        {credError && (
+          <div className="mb-3 p-2 text-xs bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 rounded">
+            {credError}
+          </div>
+        )}
+        <form onSubmit={handleSaveCreds} className="space-y-4">
+          <div className="grid grid-cols-3 gap-3">
+            <div className="col-span-2">
+              <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">SSH Host</label>
+              <input type="text" value={credForm.ssh_host} required
+                onChange={(e) => setCredForm({ ...credForm, ssh_host: e.target.value })}
+                placeholder="192.168.1.100"
+                className="w-full px-3 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white" />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Port</label>
+              <input type="number" value={credForm.ssh_port} min="1" max="65535"
+                onChange={(e) => setCredForm({ ...credForm, ssh_port: parseInt(e.target.value) })}
+                className="w-full px-3 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white" />
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">SSH User</label>
+            <input type="text" value={credForm.ssh_user} required
+              onChange={(e) => setCredForm({ ...credForm, ssh_user: e.target.value })}
+              className="w-full px-3 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white" />
+          </div>
+
+          {/* Auth method toggle */}
+          <div>
+            <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-2">Authentication</label>
+            <div className="flex gap-2 mb-3">
+              {['password', 'key'].map((method) => (
+                <button key={method} type="button"
+                  onClick={() => setCredForm({ ...credForm, auth_method: method })}
+                  className={`px-3 py-1 text-xs rounded-md ${credForm.auth_method === method ? 'bg-blue-600 text-white' : 'bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-500'}`}>
+                  {method === 'password' ? 'Password' : 'Private Key'}
+                </button>
+              ))}
+            </div>
+
+            {credForm.auth_method === 'password' ? (
+              <input type="password" value={credForm.ssh_password} required
+                onChange={(e) => setCredForm({ ...credForm, ssh_password: e.target.value })}
+                placeholder={server.has_password ? '••••••••' : 'SSH password'}
+                className="w-full px-3 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white" />
+            ) : (
+              <>
+                <textarea value={credForm.ssh_key} required rows={6}
+                  onChange={(e) => setCredForm({ ...credForm, ssh_key: e.target.value })}
+                  placeholder={server.has_key ? '••••••••' : '-----BEGIN RSA PRIVATE KEY-----'}
+                  className="w-full px-3 py-1.5 text-xs font-mono border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white" />
+                <div className="mt-2">
+                  <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+                    Sudo password <span className="text-gray-400">(leave blank if passwordless sudo)</span>
+                  </label>
+                  <input type="password" value={credForm.sudo_password}
+                    onChange={(e) => setCredForm({ ...credForm, sudo_password: e.target.value })}
+                    placeholder={server.has_sudo_password ? '••••••••' : 'sudo password'}
+                    className="w-full px-3 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white" />
+                </div>
+              </>
+            )}
+          </div>
+
+          <button type="submit" disabled={savingCreds}
+            className="w-full px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-50">
+            {savingCreds ? 'Saving...' : 'Save Credentials'}
+          </button>
+        </form>
+      </div>
+
       {/* Danger zone */}
       <div className="border border-red-200 dark:border-red-800 rounded-lg p-4">
         <h3 className="text-sm font-semibold text-red-700 dark:text-red-400 mb-2">Danger Zone</h3>
         <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">Deleting this server removes all metrics, process monitoring, and drive data permanently.</p>
-        <button onClick={onDelete} className="px-4 py-2 text-sm bg-red-600 text-white rounded-md hover:bg-red-700">
-          Delete Server
-        </button>
+        {powerDownMessage && (
+          <div className="mb-3 p-2 text-xs bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 rounded">
+            {powerDownMessage}
+          </div>
+        )}
+        {powerDownError && (
+          <div className="mb-3 p-2 text-xs bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 rounded">
+            {powerDownError}
+          </div>
+        )}
+        <div className="flex flex-wrap gap-3">
+          <button
+            onClick={() => {
+              setPowerDownError(null);
+              setPowerDownMessage(null);
+              setShowRebootConfirm(true);
+            }}
+            disabled={!canPowerDown}
+            className="px-4 py-2 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50"
+            title={canPowerDown ? 'Reboot this server over SSH' : 'Save SSH credentials first'}
+          >
+            Reboot Server
+          </button>
+          <button
+            onClick={() => {
+              setPowerDownError(null);
+              setPowerDownMessage(null);
+              setShowPowerDownConfirm(true);
+            }}
+            disabled={!canPowerDown}
+            className="px-4 py-2 text-sm bg-amber-600 text-white rounded-md hover:bg-amber-700 disabled:opacity-50"
+            title={canPowerDown ? 'Power down this server over SSH' : 'Save SSH credentials first'}
+          >
+            Power Down Server
+          </button>
+          <button onClick={onDelete} className="px-4 py-2 text-sm bg-red-600 text-white rounded-md hover:bg-red-700">
+            Delete Server
+          </button>
+        </div>
+        {!canPowerDown && (
+          <p className="mt-3 text-xs text-gray-500 dark:text-gray-400">
+            Save SSH host and credentials above before using remote power controls.
+          </p>
+        )}
       </div>
+
+      <PowerActionConfirmModal
+        isOpen={showPowerDownConfirm}
+        onClose={() => setShowPowerDownConfirm(false)}
+        server={server}
+        action="power-down"
+        onConfirm={handlePowerDown}
+        error={powerDownError}
+      />
+      <PowerActionConfirmModal
+        isOpen={showRebootConfirm}
+        onClose={() => setShowRebootConfirm(false)}
+        server={server}
+        action="reboot"
+        onConfirm={handleReboot}
+        error={powerDownError}
+      />
     </div>
   );
 }
@@ -1322,10 +1725,10 @@ function ServerDetailView({ server, onDelete, onRefresh }) {
           <>
             {activeTab === 'overview' && <OverviewTab server={server} detail={detail} tempUnit={tempUnit} />}
             {activeTab === 'metrics' && <MetricsTab serverId={server.id} tempUnit={tempUnit} />}
-            {activeTab === 'processes' && <ProcessesTab serverId={server.id} processes={detail?.processes ?? []} onRefresh={fetchDetail} />}
+            {activeTab === 'processes' && <ProcessesTab server={detail?.server ?? server} processes={detail?.processes ?? []} onRefresh={fetchDetail} />}
             {activeTab === 'drives' && <DrivesTab serverId={server.id} drives={detail?.drives ?? []} onRefresh={fetchDetail} />}
             {activeTab === 'docker' && <DockerTab containers={detail?.containers ?? []} />}
-            {activeTab === 'setup' && <SetupTab server={server} onDelete={onDelete} />}
+            {activeTab === 'setup' && <SetupTab server={detail?.server ?? server} onDelete={onDelete} onRefresh={onRefresh} />}
           </>
         )}
       </div>
@@ -1636,6 +2039,303 @@ function RouterDetailView({ router, onDelete, onRefresh }) {
   );
 }
 
+// ─── ESP32 Components ─────────────────────────────────────────────────────────
+
+function AddEsp32Modal({ isOpen, onClose, onSuccess }) {
+  const [availableHosts, setAvailableHosts] = useState([]);
+  const [formData, setFormData] = useState({ scanner_host: '', display_name: '' });
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    api.get('/esp32/available-hosts').then((res) => {
+      setAvailableHosts(res.data);
+    }).catch(() => {});
+  }, [isOpen]);
+
+  const handleHostSelect = (host) => {
+    setFormData((f) => ({ ...f, scanner_host: host, display_name: f.display_name || host }));
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!formData.scanner_host.trim()) { setError('Scanner host is required'); return; }
+    setSubmitting(true);
+    setError(null);
+    try {
+      const res = await api.post('/esp32/devices', formData);
+      onSuccess(res.data);
+      setFormData({ scanner_host: '', display_name: '' });
+      onClose();
+    } catch (err) {
+      setError(err.response?.data?.detail || 'Failed to add device');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  if (!isOpen) return null;
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+      <div className="bg-white dark:bg-gray-800 rounded-lg p-6 w-full max-w-md mx-4">
+        <h3 className="text-lg font-semibold mb-4 text-gray-900 dark:text-white">Add ESP32 Device</h3>
+        {error && <div className="mb-4 p-3 bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 rounded-md text-sm">{error}</div>}
+        {availableHosts.length > 0 && (
+          <div className="mb-4">
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+              Detected hosts (last 7 days)
+            </label>
+            <div className="flex flex-wrap gap-2">
+              {availableHosts.map((host) => (
+                <button
+                  key={host}
+                  type="button"
+                  onClick={() => handleHostSelect(host)}
+                  className={`px-3 py-1 text-sm rounded-full border transition-colors ${
+                    formData.scanner_host === host
+                      ? 'bg-blue-600 text-white border-blue-600'
+                      : 'border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
+                  }`}
+                >
+                  {host}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Scanner Host *</label>
+            <input
+              type="text"
+              value={formData.scanner_host}
+              onChange={(e) => setFormData({ ...formData, scanner_host: e.target.value })}
+              placeholder="livingroom32"
+              required
+              disabled={submitting}
+              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Display Name</label>
+            <input
+              type="text"
+              value={formData.display_name}
+              onChange={(e) => setFormData({ ...formData, display_name: e.target.value })}
+              placeholder="Living Room ESP32"
+              disabled={submitting}
+              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+            />
+          </div>
+          <div className="flex gap-2 mt-2">
+            <button type="button" onClick={onClose} disabled={submitting}
+              className="flex-1 px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 rounded-md hover:bg-gray-200 dark:hover:bg-gray-600 disabled:opacity-50">
+              Cancel
+            </button>
+            <button type="submit" disabled={submitting}
+              className="flex-1 px-4 py-2 text-sm font-medium text-white bg-green-600 rounded-md hover:bg-green-700 disabled:opacity-50">
+              {submitting ? 'Adding...' : 'Add Device'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+// ESP32 recorded_at is stored in server local time (EST), not UTC — parse without Z
+function parseLocal(dateStr) {
+  if (!dateStr) return null;
+  return new Date(dateStr.endsWith('Z') ? dateStr : dateStr.replace(' ', 'T'));
+}
+
+function formatLocalRelativeTime(dateStr) {
+  if (!dateStr) return '—';
+  const diff = Math.floor((Date.now() - parseLocal(dateStr)) / 1000);
+  if (diff < 0) return 'just now';
+  if (diff < 60) return `${diff}s ago`;
+  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+  if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
+  return `${Math.floor(diff / 86400)}d ago`;
+}
+
+function formatLocalTime(dateStr) {
+  if (!dateStr) return '—';
+  return parseLocal(dateStr).toLocaleString();
+}
+
+function formatUptime(ms) {
+  if (ms == null) return '—';
+  const s = Math.floor(ms / 1000);
+  const d = Math.floor(s / 86400);
+  const h = Math.floor((s % 86400) / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  if (d > 0) return `${d}d ${h}h`;
+  if (h > 0) return `${h}h ${m}m`;
+  return `${m}m`;
+}
+
+function Esp32DeviceView({ deviceStatus, onDelete }) {
+  const { device, health } = deviceStatus;
+  const online = health?.is_online ?? false;
+
+  const [hours, setHours] = useState(1);
+  const [historyData, setHistoryData] = useState([]);
+  const [historyLoading, setHistoryLoading] = useState(true);
+
+  const fetchHistory = useCallback(async () => {
+    setHistoryLoading(true);
+    try {
+      const res = await api.get(`/esp32/devices/${device.id}/history?hours=${hours}`);
+      setHistoryData(res.data.map((r) => ({
+        ...r,
+        time: parseLocal(r.recorded_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        free_heap_kb: r.free_heap != null ? +(r.free_heap / 1024).toFixed(1) : null,
+        min_free_heap_kb: r.min_free_heap != null ? +(r.min_free_heap / 1024).toFixed(1) : null,
+        temperature_f: r.temperature_c != null ? +toF(parseFloat(r.temperature_c)).toFixed(1) : null,
+      })));
+    } catch (err) {
+      console.error('Failed to fetch ESP32 history:', err);
+    } finally {
+      setHistoryLoading(false);
+    }
+  }, [device.id, hours]);
+
+  useEffect(() => { fetchHistory(); }, [fetchHistory]);
+
+  const timeRanges = [{ label: '1h', value: 1 }, { label: '6h', value: 6 }, { label: '24h', value: 24 }, { label: '7d', value: 168 }];
+
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <div className="text-xs text-gray-400 dark:text-gray-500 mb-1 uppercase tracking-wider">ESP32 Device</div>
+          <h2 className="text-2xl font-bold text-gray-900 dark:text-white">{device.display_name}</h2>
+          <p className="text-sm text-gray-500 dark:text-gray-400 font-mono mt-0.5">{device.scanner_host}</p>
+        </div>
+        <div className="flex items-center gap-3">
+          <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-medium ${
+            online
+              ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400'
+              : 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400'
+          }`}>
+            <div className={`w-2 h-2 rounded-full ${online ? 'bg-green-500 animate-pulse' : 'bg-red-500'}`} />
+            {online ? 'Online' : 'Offline'}
+          </div>
+          <button onClick={onDelete}
+            className="px-3 py-1.5 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-md border border-red-200 dark:border-red-800">
+            Remove
+          </button>
+        </div>
+      </div>
+
+      {/* Status bar */}
+      <div className="flex flex-wrap items-center gap-4 p-4 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
+        {health?.mac && <span className="text-sm text-gray-500 dark:text-gray-400">MAC: <span className="font-mono text-gray-700 dark:text-gray-300">{health.mac}</span></span>}
+        {health?.uptime_ms != null && <span className="text-sm text-gray-500 dark:text-gray-400">Uptime: <span className="text-gray-700 dark:text-gray-300">{formatUptime(health.uptime_ms)}</span></span>}
+        {health?.recorded_at && <span className="text-sm text-gray-500 dark:text-gray-400">Last seen: <span className="text-gray-700 dark:text-gray-300">{formatLocalRelativeTime(health.recorded_at)}</span></span>}
+      </div>
+
+      {/* Current stats */}
+      {health ? (
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+          {health.temperature_c != null && (
+            <div className={`rounded-lg p-4 ${esp32TempBg(health.temperature_c)}`}>
+              <div className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Temperature</div>
+              <div className={`text-2xl font-bold ${esp32TempColor(health.temperature_c)}`}>
+                {esp32TempEmoji(health.temperature_c)} {toF(parseFloat(health.temperature_c)).toFixed(1)}°F
+              </div>
+            </div>
+          )}
+          {health.free_heap != null && (
+            <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-4">
+              <div className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Free Heap</div>
+              <div className="text-2xl font-bold text-blue-600 dark:text-blue-400">{formatBytes(health.free_heap)}</div>
+            </div>
+          )}
+          {health.min_free_heap != null && (
+            <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-4">
+              <div className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Min Free Heap</div>
+              <div className="text-2xl font-bold text-purple-600 dark:text-purple-400">{formatBytes(health.min_free_heap)}</div>
+            </div>
+          )}
+        </div>
+      ) : (
+        <div className="text-center py-8 text-gray-400 dark:text-gray-500 text-sm">
+          No health data received yet for <code className="font-mono">{device.scanner_host}</code>.
+        </div>
+      )}
+
+      {/* History charts */}
+      <div>
+        <div className="flex items-center gap-2 mb-4">
+          <span className="text-sm text-gray-500 dark:text-gray-400">Time range:</span>
+          {timeRanges.map((r) => (
+            <button key={r.value} onClick={() => setHours(r.value)}
+              className={`px-3 py-1 text-sm rounded-md ${hours === r.value ? 'bg-blue-600 text-white' : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'}`}>
+              {r.label}
+            </button>
+          ))}
+          <button onClick={fetchHistory} className="ml-auto px-3 py-1 text-sm bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-md flex items-center gap-1">
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+            </svg>
+            Refresh
+          </button>
+        </div>
+
+        {historyLoading ? (
+          <div className="flex items-center justify-center py-16">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" />
+          </div>
+        ) : historyData.length === 0 ? (
+          <div className="text-center py-16 text-gray-400 dark:text-gray-500">No history in the selected time range</div>
+        ) : (
+          <div className="space-y-4">
+            {/* Temperature chart */}
+            {historyData.some((d) => d.temperature_f != null) && (
+              <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-4">
+                <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3">Temperature (°F)</h3>
+                <ResponsiveContainer width="100%" height={200}>
+                  <LineChart data={historyData} margin={{ top: 4, right: 16, bottom: 4, left: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#374151" opacity={0.3} />
+                    <XAxis dataKey="time" tick={{ fontSize: 11, fill: '#9ca3af' }} interval="preserveStartEnd" />
+                    <YAxis tick={{ fontSize: 11, fill: '#9ca3af' }} width={38} tickFormatter={(v) => `${v}°`} />
+                    <Tooltip {...CHART_TOOLTIP_STYLE} formatter={(v) => [`${v}°F`, 'Temp']} />
+                    <Line type="monotone" dataKey="temperature_f" stroke="#f97316" dot={false} strokeWidth={1.5} isAnimationActive={false} connectNulls />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+            )}
+
+            {/* Free heap chart */}
+            {historyData.some((d) => d.free_heap_kb != null) && (
+              <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-4">
+                <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3">Heap Memory (KB)</h3>
+                <ResponsiveContainer width="100%" height={200}>
+                  <LineChart data={historyData} margin={{ top: 4, right: 16, bottom: 4, left: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#374151" opacity={0.3} />
+                    <XAxis dataKey="time" tick={{ fontSize: 11, fill: '#9ca3af' }} interval="preserveStartEnd" />
+                    <YAxis tick={{ fontSize: 11, fill: '#9ca3af' }} width={48} tickFormatter={(v) => `${v}K`} />
+                    <Tooltip {...CHART_TOOLTIP_STYLE} formatter={(v, name) => [`${v} KB`, name === 'free_heap_kb' ? 'Free Heap' : 'Min Free Heap']} />
+                    <Legend formatter={(v) => v === 'free_heap_kb' ? 'Free Heap' : 'Min Free Heap'} wrapperStyle={{ fontSize: '12px' }} />
+                    <Line type="monotone" dataKey="free_heap_kb" stroke="#3b82f6" dot={false} strokeWidth={1.5} isAnimationActive={false} connectNulls name="free_heap_kb" />
+                    {historyData.some((d) => d.min_free_heap_kb != null) && (
+                      <Line type="monotone" dataKey="min_free_heap_kb" stroke="#8b5cf6" dot={false} strokeWidth={1.5} isAnimationActive={false} connectNulls name="min_free_heap_kb" />
+                    )}
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function ServersPage() {
@@ -1657,7 +2357,12 @@ export default function ServersPage() {
   const [showAddRouterModal, setShowAddRouterModal] = useState(false);
   const [deleteRouterTarget, setDeleteRouterTarget] = useState(null);
 
-  // 'server' | 'router'
+  // ESP32 state
+  const [esp32Statuses, setEsp32Statuses] = useState([]);
+  const [selectedEsp32Id, setSelectedEsp32Id] = useState(null);
+  const [showAddEsp32Modal, setShowAddEsp32Modal] = useState(false);
+
+  // 'server' | 'router' | 'esp32'
   const [selectionType, setSelectionType] = useState('server');
 
   const fetchServers = useCallback(async () => {
@@ -1681,12 +2386,21 @@ export default function ServersPage() {
     }
   }, []);
 
-  useEffect(() => { fetchServers(); fetchRouters(); }, []);
+  const fetchEsp32 = useCallback(async () => {
+    try {
+      const res = await api.get('/esp32/devices/status');
+      setEsp32Statuses(res.data);
+    } catch (err) {
+      console.error('Failed to fetch ESP32 devices:', err);
+    }
+  }, []);
+
+  useEffect(() => { fetchServers(); fetchRouters(); fetchEsp32(); }, []);
 
   useEffect(() => {
-    const interval = setInterval(() => { fetchServers(); fetchRouters(); }, 60000);
+    const interval = setInterval(() => { fetchServers(); fetchRouters(); fetchEsp32(); }, 60000);
     return () => clearInterval(interval);
-  }, [fetchServers, fetchRouters]);
+  }, [fetchServers, fetchRouters, fetchEsp32]);
 
   const handleAddSuccess = (serverData) => {
     setNewServerData(serverData);
@@ -1718,11 +2432,13 @@ export default function ServersPage() {
     }
   };
 
-  const selectServer = (id) => { setSelectedId(id); setSelectionType('server'); setSelectedRouterId(null); };
-  const selectRouter = (id) => { setSelectedRouterId(id); setSelectionType('router'); setSelectedId(null); };
+  const selectServer = (id) => { setSelectedId(id); setSelectionType('server'); setSelectedRouterId(null); setSelectedEsp32Id(null); };
+  const selectRouter = (id) => { setSelectedRouterId(id); setSelectionType('router'); setSelectedId(null); setSelectedEsp32Id(null); };
+  const selectEsp32 = (id) => { setSelectedEsp32Id(id); setSelectionType('esp32'); setSelectedId(null); setSelectedRouterId(null); };
 
   const selectedServer = servers.find((s) => s.id === selectedId);
   const selectedRouter = routers.find((r) => r.id === selectedRouterId);
+  const selectedEsp32Status = esp32Statuses.find((s) => s.device.id === selectedEsp32Id);
 
   return (
     <div className="min-h-screen bg-gray-100 dark:bg-gray-900 flex flex-col">
@@ -1815,7 +2531,7 @@ export default function ServersPage() {
             </button>
           </div>
 
-          <div className="p-2 pb-4">
+          <div className="p-2">
             <div className="px-2 py-1 text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider">Routers</div>
             {routers.length === 0 ? (
               <div className="text-center py-4 text-xs text-gray-400 dark:text-gray-500">No routers yet</div>
@@ -1840,11 +2556,63 @@ export default function ServersPage() {
               </ul>
             )}
           </div>
+
+          {/* ESP32 section */}
+          <div className="p-3 border-t border-gray-200 dark:border-gray-700">
+            <button onClick={() => setShowAddEsp32Modal(true)}
+              className="w-full px-3 py-2 text-sm bg-green-700 dark:bg-green-700 text-white rounded-md hover:bg-green-600 dark:hover:bg-green-600 flex items-center justify-center gap-1.5">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
+              Add ESP32
+            </button>
+          </div>
+
+          <div className="p-2 pb-4">
+            <div className="px-2 py-1 text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider">ESP32</div>
+            {esp32Statuses.length === 0 ? (
+              <div className="text-center py-4 text-xs text-gray-400 dark:text-gray-500">No devices yet</div>
+            ) : (
+              <ul className="space-y-0.5">
+                {esp32Statuses.map(({ device, health }) => (
+                  <li key={device.id}>
+                    <button onClick={() => selectEsp32(device.id)}
+                      className={`w-full text-left px-3 py-2 rounded-md transition-colors flex items-center gap-2.5 ${
+                        selectionType === 'esp32' && selectedEsp32Id === device.id
+                          ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300'
+                          : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
+                      }`}>
+                      <div className={`w-2 h-2 rounded-full flex-shrink-0 ${health?.is_online ? 'bg-green-500' : 'bg-red-400'}`} />
+                      <div className="min-w-0">
+                        <div className="font-medium text-sm truncate">{device.display_name}</div>
+                        <div className="text-xs text-gray-400 dark:text-gray-500 truncate font-mono">{device.scanner_host}</div>
+                      </div>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
         </aside>
 
         {/* Main content */}
         <main className="flex-1 overflow-y-auto p-6">
-          {selectionType === 'router' && selectedRouter ? (
+          {selectionType === 'esp32' && selectedEsp32Status ? (
+            <div className="max-w-5xl mx-auto">
+              <Esp32DeviceView
+                key={selectedEsp32Status.device.id}
+                deviceStatus={selectedEsp32Status}
+                onDelete={async () => {
+                  try {
+                    await api.delete(`/esp32/devices/${selectedEsp32Status.device.id}`);
+                    setSelectedEsp32Id(null);
+                    setSelectionType('server');
+                    fetchEsp32();
+                  } catch {
+                    alert('Failed to remove device');
+                  }
+                }}
+              />
+            </div>
+          ) : selectionType === 'router' && selectedRouter ? (
             <div className="max-w-5xl mx-auto">
               <div className="flex items-center justify-between mb-6">
                 <div>
@@ -1894,6 +2662,7 @@ export default function ServersPage() {
       <DeleteConfirmModal isOpen={!!deleteTarget} onClose={() => setDeleteTarget(null)} server={deleteTarget} onConfirm={handleDeleteConfirm} />
       <AddRouterModal isOpen={showAddRouterModal} onClose={() => setShowAddRouterModal(false)} onSuccess={(r) => { fetchRouters(); selectRouter(r.id); }} />
       <DeleteConfirmModal isOpen={!!deleteRouterTarget} onClose={() => setDeleteRouterTarget(null)} server={deleteRouterTarget} onConfirm={handleDeleteRouterConfirm} />
+      <AddEsp32Modal isOpen={showAddEsp32Modal} onClose={() => setShowAddEsp32Modal(false)} onSuccess={(d) => { fetchEsp32(); selectEsp32(d.id); }} />
     </div>
   );
 }

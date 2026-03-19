@@ -1,9 +1,13 @@
+from datetime import datetime, timezone, timedelta
+import io
+import paramiko
 from fastapi import APIRouter, Header, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from app.api.v1.deps import CurrentActiveUser, DbSession, verify_api_key
 from app.crud.server import (
     create_server,
+    update_server,
     delete_server,
     get_containers,
     get_processes,
@@ -13,6 +17,7 @@ from app.crud.server import (
     get_server_by_id_and_user,
     get_servers,
     record_metrics,
+    update_server_mac_address,
     update_server_status,
     upsert_containers,
     upsert_processes,
@@ -24,6 +29,8 @@ from app.crud.server import (
     get_process_presets,
     create_process_preset,
     delete_process_preset,
+    get_server_ssh_password,
+    get_server_sudo_password,
 )
 from app.schemas.server import (
     ContainerRecord,
@@ -40,11 +47,102 @@ from app.schemas.server import (
     DriveRecord,
     ServerCreate,
     ServerCreateResponse,
+    ServerUpdate,
+    ServerCredentialsUpdate,
     ServerDetail,
     ServerResponse,
+    ServiceActionRequest,
+    ServiceActionResponse,
 )
 
 router = APIRouter(prefix="/servers", tags=["Servers"])
+
+def _compute_server_online(server) -> bool:
+    if not server.last_seen:
+        return False
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    grace_seconds = max((server.poll_interval or 60) * 2, 120)
+    return (now - server.last_seen) <= timedelta(seconds=grace_seconds)
+
+
+def _to_server_response(server):
+    base = ServerResponse.model_validate(server)
+    return base.model_copy(update={
+        "is_online": _compute_server_online(server),
+        "has_password": bool(getattr(server, "ssh_password_enc", None)),
+        "has_key": bool(getattr(server, "ssh_key", None)),
+        "has_sudo_password": bool(getattr(server, "sudo_password_enc", None)),
+    })
+
+
+def _get_server_ssh_host(server) -> str | None:
+    return server.ssh_host or server.hostname or server.ip_address
+
+
+def _build_ssh_client(server):
+    host = _get_server_ssh_host(server)
+    if not host:
+        raise HTTPException(status_code=400, detail="Server SSH host is not set")
+    if not server.ssh_key and not server.ssh_password_enc:
+        raise HTTPException(status_code=400, detail="Server SSH credentials are not set")
+
+    connect_kwargs = {
+        "hostname": host,
+        "port": server.ssh_port or 22,
+        "username": server.ssh_user or "root",
+        "timeout": 10,
+    }
+
+    if server.ssh_key:
+        key_text = server.ssh_key
+        try:
+            pkey = paramiko.RSAKey.from_private_key(io.StringIO(key_text))
+        except Exception:
+            try:
+                pkey = paramiko.Ed25519Key.from_private_key(io.StringIO(key_text))
+            except Exception:
+                pkey = paramiko.ECDSAKey.from_private_key(io.StringIO(key_text))
+        connect_kwargs["pkey"] = pkey
+    else:
+        password = get_server_ssh_password(server)
+        if not password:
+            raise HTTPException(status_code=400, detail="Server SSH password is not set")
+        connect_kwargs["password"] = password
+
+    client = paramiko.SSHClient()
+    client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+    client.connect(**connect_kwargs)
+    return client
+
+
+def _run_remote_command_with_sudo_fallback(server, base_cmd: str) -> tuple[int, bool, str, str]:
+    """Run a remote command, retrying with sudo if the direct execution fails."""
+    client = _build_ssh_client(server)
+    used_sudo = False
+    try:
+        stdin, stdout, stderr = client.exec_command(base_cmd)
+        exit_code = stdout.channel.recv_exit_status()
+        out = stdout.read().decode(errors="ignore")
+        err = stderr.read().decode(errors="ignore")
+
+        if exit_code != 0:
+            sudo_password = get_server_sudo_password(server) or get_server_ssh_password(server)
+            used_sudo = True
+            if sudo_password:
+                sudo_cmd = f"sudo -S -p '' {base_cmd}"
+                stdin, stdout, stderr = client.exec_command(sudo_cmd)
+                stdin.write(sudo_password + "\n")
+                stdin.flush()
+            else:
+                sudo_cmd = f"sudo -n {base_cmd}"
+                stdin, stdout, stderr = client.exec_command(sudo_cmd)
+            exit_code = stdout.channel.recv_exit_status()
+            out = stdout.read().decode(errors="ignore")
+            err = stderr.read().decode(errors="ignore")
+
+        return exit_code, used_sudo, out, err
+    finally:
+        client.close()
 
 
 # =============================================================================
@@ -67,6 +165,9 @@ def report_metrics(
 
     # Record metrics
     record_metrics(db, server.id, payload.metrics)
+
+    # Update server identity details reported by the agent
+    update_server_mac_address(db, server, payload.mac_address)
 
     # Upsert container stats
     if payload.containers:
@@ -104,9 +205,39 @@ def create_new_server(
     """
     server, api_key = create_server(db, current_user.id, server_in)
     return ServerCreateResponse(
-        server=ServerResponse.model_validate(server),
+        server=_to_server_response(server),
         api_key=api_key,
     )
+
+
+@router.put("/{server_id}", response_model=ServerResponse)
+def update_server_detail(
+    server_id: int,
+    server_in: ServerUpdate,
+    db: DbSession,
+    current_user: CurrentActiveUser,
+):
+    """Update server details and SSH credentials."""
+    server = get_server_by_id_and_user(db, server_id, current_user.id)
+    if not server:
+        raise HTTPException(status_code=404, detail="Server not found")
+    updated = update_server(db, server, server_in)
+    return _to_server_response(updated)
+
+
+@router.post("/{server_id}/credentials", response_model=ServerResponse)
+def update_server_credentials(
+    server_id: int,
+    creds_in: ServerCredentialsUpdate,
+    db: DbSession,
+    current_user: CurrentActiveUser,
+):
+    """Update server SSH credentials (POST to avoid PUT restrictions)."""
+    server = get_server_by_id_and_user(db, server_id, current_user.id)
+    if not server:
+        raise HTTPException(status_code=404, detail="Server not found")
+    updated = update_server(db, server, ServerUpdate(**creds_in.model_dump()))
+    return _to_server_response(updated)
 
 
 @router.get("", response_model=list[ServerResponse])
@@ -116,7 +247,26 @@ def list_servers(
 ):
     """List all servers for the current user."""
     servers = get_servers(db, current_user.id)
-    return [ServerResponse.model_validate(s) for s in servers]
+    return [_to_server_response(s) for s in servers]
+
+
+@router.get("/process-presets", response_model=list[ProcessPresetResponse])
+def list_process_presets(db: DbSession, current_user: CurrentActiveUser):
+    """Get all process presets (builtin + user-defined)."""
+    return get_process_presets(db)
+
+
+@router.post("/process-presets", response_model=ProcessPresetResponse, status_code=status.HTTP_201_CREATED)
+def add_process_preset(preset_in: ProcessPresetCreate, db: DbSession, current_user: CurrentActiveUser):
+    """Create a user-defined process preset."""
+    return create_process_preset(db, preset_in)
+
+
+@router.delete("/process-presets/{preset_id}", status_code=status.HTTP_204_NO_CONTENT)
+def remove_process_preset(preset_id: int, db: DbSession, current_user: CurrentActiveUser):
+    """Delete a user-defined process preset. Builtin presets cannot be deleted."""
+    if not delete_process_preset(db, preset_id):
+        raise HTTPException(status_code=404, detail="Preset not found or cannot delete a builtin preset")
 
 
 @router.get("/{server_id}", response_model=ServerDetail)
@@ -136,7 +286,7 @@ def get_server_detail(
     drives = get_drives(db, server_id)
 
     return ServerDetail(
-        server=ServerResponse.model_validate(server),
+        server=_to_server_response(server),
         recent_metrics=[MetricRecord.model_validate(m) for m in recent_metrics],
         containers=[ContainerRecord.model_validate(c) for c in containers],
         processes=[ProcessRecord.model_validate(p) for p in processes],
@@ -158,6 +308,90 @@ def get_server_metrics_history(
 
     metrics = get_metrics_by_timerange(db, server_id, hours=hours)
     return [MetricRecord.model_validate(m) for m in metrics]
+
+
+@router.post("/{server_id}/service-action", response_model=ServiceActionResponse)
+def run_service_action(
+    server_id: int,
+    action_in: ServiceActionRequest,
+    db: DbSession,
+    current_user: CurrentActiveUser,
+):
+    """Start/stop/restart a systemd service via SSH."""
+    server = get_server_by_id_and_user(db, server_id, current_user.id)
+    if not server:
+        raise HTTPException(status_code=404, detail="Server not found")
+
+    action = action_in.action
+    service = action_in.service_name
+    base_cmd = f"systemctl {action} {service}"
+
+    exit_code, used_sudo, out, err = _run_remote_command_with_sudo_fallback(server, base_cmd)
+
+    return ServiceActionResponse(
+        success=exit_code == 0,
+        used_sudo=used_sudo,
+        stdout=out,
+        stderr=err,
+    )
+
+
+@router.post("/{server_id}/power-down", response_model=MessageResponse)
+def power_down_server(
+    server_id: int,
+    db: DbSession,
+    current_user: CurrentActiveUser,
+):
+    """Power down a Linux server over SSH using saved credentials."""
+    server = get_server_by_id_and_user(db, server_id, current_user.id)
+    if not server:
+        raise HTTPException(status_code=404, detail="Server not found")
+
+    commands = [
+        "systemctl poweroff",
+        "shutdown -h now",
+        "poweroff",
+    ]
+    last_error = "Failed to power down server"
+
+    for cmd in commands:
+        exit_code, used_sudo, out, err = _run_remote_command_with_sudo_fallback(server, cmd)
+        if exit_code == 0:
+            method = "with sudo" if used_sudo else "without sudo"
+            return MessageResponse(message=f"Power down command sent to {server.name} {method}.")
+        if err.strip() or out.strip():
+            last_error = err.strip() or out.strip()
+
+    raise HTTPException(status_code=500, detail=last_error)
+
+
+@router.post("/{server_id}/reboot", response_model=MessageResponse)
+def reboot_server(
+    server_id: int,
+    db: DbSession,
+    current_user: CurrentActiveUser,
+):
+    """Reboot a Linux server over SSH using saved credentials."""
+    server = get_server_by_id_and_user(db, server_id, current_user.id)
+    if not server:
+        raise HTTPException(status_code=404, detail="Server not found")
+
+    commands = [
+        "systemctl reboot",
+        "shutdown -r now",
+        "reboot",
+    ]
+    last_error = "Failed to reboot server"
+
+    for cmd in commands:
+        exit_code, used_sudo, out, err = _run_remote_command_with_sudo_fallback(server, cmd)
+        if exit_code == 0:
+            method = "with sudo" if used_sudo else "without sudo"
+            return MessageResponse(message=f"Reboot command sent to {server.name} {method}.")
+        if err.strip() or out.strip():
+            last_error = err.strip() or out.strip()
+
+    raise HTTPException(status_code=500, detail=last_error)
 
 
 @router.delete("/{server_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -272,25 +506,6 @@ def remove_monitored_drive(
         raise HTTPException(status_code=404, detail="Drive not found")
 
 
-@router.get("/process-presets", response_model=list[ProcessPresetResponse])
-def list_process_presets(db: DbSession, current_user: CurrentActiveUser):
-    """Get all process presets (builtin + user-defined)."""
-    return get_process_presets(db)
-
-
-@router.post("/process-presets", response_model=ProcessPresetResponse, status_code=status.HTTP_201_CREATED)
-def add_process_preset(preset_in: ProcessPresetCreate, db: DbSession, current_user: CurrentActiveUser):
-    """Create a user-defined process preset."""
-    return create_process_preset(db, preset_in)
-
-
-@router.delete("/process-presets/{preset_id}", status_code=status.HTTP_204_NO_CONTENT)
-def remove_process_preset(preset_id: int, db: DbSession, current_user: CurrentActiveUser):
-    """Delete a user-defined process preset. Builtin presets cannot be deleted."""
-    if not delete_process_preset(db, preset_id):
-        raise HTTPException(status_code=404, detail="Preset not found or cannot delete a builtin preset")
-
-
 @router.post("/{server_id}/wake", response_model=MessageResponse)
 def wake_server(
     server_id: int,
@@ -323,6 +538,14 @@ def deploy_agent(
     server = get_server_by_id_and_user(db, server_id, current_user.id)
     if not server:
         raise HTTPException(status_code=404, detail="Server not found")
+
+    if deploy_in.use_saved_creds:
+        deploy_in.ssh_password = get_server_ssh_password(server)
+        deploy_in.ssh_key = server.ssh_key
+        deploy_in.sudo_password = get_server_sudo_password(server)
+        deploy_in.ssh_host = _get_server_ssh_host(server) or ""
+        deploy_in.ssh_port = server.ssh_port or 22
+        deploy_in.ssh_user = server.ssh_user or "root"
 
     if not deploy_in.ssh_password and not deploy_in.ssh_key:
         raise HTTPException(status_code=400, detail="Either ssh_password or ssh_key is required")

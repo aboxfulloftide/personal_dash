@@ -69,6 +69,24 @@ def update_package(db: Session, package: Package, update_data: PackageUpdate) ->
     return package
 
 
+def delete_delivered_packages(db: Session, user_id: int) -> int:
+    """Soft delete all delivered packages for a user. Returns count deleted."""
+    result = db.execute(
+        select(Package).where(
+            Package.user_id == user_id,
+            Package.delivered == True,
+            Package.dismissed == False,
+        )
+    )
+    packages = list(result.scalars().all())
+    now = datetime.now()
+    for package in packages:
+        package.dismissed = True
+        package.dismissed_at = now
+    db.commit()
+    return len(packages)
+
+
 def delete_package(db: Session, package_id: int) -> bool:
     """Soft delete a package (marks as dismissed). Returns True if deleted."""
     package = db.get(Package, package_id)
@@ -109,37 +127,44 @@ def mark_package_delivered_by_tracking(
     db: Session,
     user_id: int,
     tracking_number: str,
-    delivery_subject: str = None
+    delivery_subject: str = None,
+    delivery_sender: str = None,
 ) -> Package | None:
     """
     Find a package by tracking number and mark it as delivered.
-    Falls back to subject similarity matching if no exact tracking match is found.
+    Falls back through three matching strategies if no exact tracking match is found:
+      1. Subject similarity (threshold 0.4, or 0.25 when sender domain matches)
+      2. Unique candidate from same sender domain
+      3. Best subject match among same-sender candidates (threshold 0.15)
     Returns the updated package if found, None otherwise.
     """
+    import re
+
     print(f"[DEBUG] Attempting to mark package delivered:")
     print(f"  User ID: {user_id}")
     print(f"  Tracking number: {tracking_number}")
     print(f"  Delivery subject: {delivery_subject}")
+    print(f"  Delivery sender: {delivery_sender}")
 
-    # Case-insensitive search for tracking number
-    result = db.execute(
-        select(Package).where(
-            Package.user_id == user_id,
-            Package.tracking_number.ilike(tracking_number),
-            Package.dismissed == False,
+    # Case-insensitive search for tracking number (skip empty string)
+    packages = []
+    if tracking_number:
+        result = db.execute(
+            select(Package).where(
+                Package.user_id == user_id,
+                Package.tracking_number.ilike(tracking_number),
+                Package.dismissed == False,
+            )
         )
-    )
-    packages = list(result.scalars().all())
+        packages = list(result.scalars().all())
 
-    # If no exact match and we have a subject, try subject similarity matching
-    if not packages and delivery_subject:
-        print(f"  ℹ No exact tracking match, trying subject similarity...")
+    # Fuzzy fallback: subject similarity + sender domain matching
+    if not packages and (delivery_subject or delivery_sender):
+        print(f"  ℹ No exact tracking match, trying fuzzy matching...")
 
-        # Import here to avoid circular imports
         from app.core.scheduler import calculate_subject_similarity
-
-        # Get all undelivered packages for this user from the last 14 days
         from datetime import timedelta
+
         two_weeks_ago = datetime.now() - timedelta(days=14)
 
         result = db.execute(
@@ -148,30 +173,68 @@ def mark_package_delivered_by_tracking(
                 Package.dismissed == False,
                 Package.delivered == False,
                 Package.created_at >= two_weeks_ago,
-                Package.email_subject.isnot(None),
             )
         )
         candidate_packages = list(result.scalars().all())
 
-        print(f"  Checking {len(candidate_packages)} undelivered packages for subject similarity")
+        print(f"  Checking {len(candidate_packages)} undelivered packages")
 
+        # Extract sender domain (e.g. "amazon.com" from "Ship <ship@amazon.com>")
+        sender_domain = None
+        if delivery_sender:
+            m = re.search(r'@([\w.-]+)', delivery_sender)
+            if m:
+                sender_domain = m.group(1).lower()
+
+        # --- Stage 1: Subject similarity ---
         best_match = None
         best_similarity = 0.0
 
         for pkg in candidate_packages:
+            if not pkg.email_subject or not delivery_subject:
+                continue
             similarity = calculate_subject_similarity(pkg.email_subject, delivery_subject)
-            print(f"    Package #{pkg.id} '{pkg.email_subject[:50]}...' similarity: {similarity:.0%}")
+            same_sender = bool(sender_domain and pkg.email_sender and sender_domain in pkg.email_sender.lower())
+            print(f"    Package #{pkg.id} '{pkg.email_subject[:50]}' similarity: {similarity:.0%} same_sender={same_sender}")
 
             if similarity > best_similarity:
                 best_similarity = similarity
                 best_match = pkg
 
-        # Use a 60% threshold for delivery matching (slightly lower than duplicate detection's 70%)
-        if best_match and best_similarity > 0.6:
-            print(f"  ✓ Found match by subject similarity ({best_similarity:.0%}): {best_match.description}")
-            packages = [best_match]
-        else:
-            print(f"  ✗ No package matched by subject (best similarity: {best_similarity:.0%})")
+        if best_match:
+            same_sender = bool(sender_domain and best_match.email_sender and sender_domain in best_match.email_sender.lower())
+            # Lower threshold when delivery and shipping emails share the same sender domain
+            threshold = 0.25 if same_sender else 0.5
+            if best_similarity >= threshold:
+                print(f"  ✓ Matched by subject similarity ({best_similarity:.0%}, same_sender={same_sender}): {best_match.description}")
+                packages = [best_match]
+            else:
+                print(f"  ✗ Subject similarity too low (best: {best_similarity:.0%}, threshold: {threshold:.0%})")
+
+        # --- Stage 2: Unique candidate from same sender domain ---
+        if not packages and sender_domain:
+            domain_candidates = [
+                p for p in candidate_packages
+                if p.email_sender and sender_domain in p.email_sender.lower()
+            ]
+            if len(domain_candidates) == 1:
+                print(f"  ✓ Matched by unique sender domain ({sender_domain}): {domain_candidates[0].description}")
+                packages = domain_candidates
+
+            # --- Stage 3: Best subject match among same-sender candidates ---
+            elif len(domain_candidates) > 1 and delivery_subject:
+                best = max(
+                    domain_candidates,
+                    key=lambda p: calculate_subject_similarity(p.email_subject or '', delivery_subject),
+                )
+                sim = calculate_subject_similarity(best.email_subject or '', delivery_subject)
+                if sim >= 0.15:
+                    print(f"  ✓ Matched by sender domain + weak subject ({sim:.0%}): {best.description}")
+                    packages = [best]
+                else:
+                    print(f"  ✗ No match: sender domain has {len(domain_candidates)} candidates but best subject similarity too low ({sim:.0%})")
+            else:
+                print(f"  ✗ No match by sender domain ({sender_domain})")
 
     if packages:
         if len(packages) > 1:

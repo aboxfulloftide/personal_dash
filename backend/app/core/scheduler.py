@@ -268,7 +268,8 @@ async def scan_user_email_task():
                             db,
                             cred.user_id,
                             tracking_number,
-                            delivery_subject=delivery_subject
+                            delivery_subject=delivery_subject,
+                            delivery_sender=delivery_info.email_sender,
                         )
                         if package:
                             packages_delivered += 1

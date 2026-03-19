@@ -10,6 +10,7 @@ from app.models.finance import StockQuote, CryptoPrice
 from app.models.reminder import Reminder, ReminderInstance
 from app.models.custom_widget import CustomWidgetData
 from app.models.router import Router, RouterPollResult
+from app.models.esp32 import Esp32Device
 
 __all__ = [
     "User",
@@ -35,4 +36,5 @@ __all__ = [
     "CustomWidgetData",
     "Router",
     "RouterPollResult",
+    "Esp32Device",
 ]

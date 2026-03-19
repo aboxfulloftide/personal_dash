@@ -133,7 +133,7 @@ function ContainerList({ containers }) {
   );
 }
 
-function ProcessList({ processes, serverId, onRefresh, isEditing }) {
+function ProcessList({ processes, serverId, onRefresh, isEditing, isStale }) {
   const [hoveredId, setHoveredId] = useState(null);
   const [deletingId, setDeletingId] = useState(null);
   const [processToDelete, setProcessToDelete] = useState(null);
@@ -169,6 +169,9 @@ function ProcessList({ processes, serverId, onRefresh, isEditing }) {
     <>
       <div className="space-y-1">
         {processes.map((process) => (
+          (() => {
+            const effectiveRunning = !isStale && process.is_running;
+            return (
           <div
             key={process.id}
             className="flex items-center justify-between text-xs group"
@@ -177,14 +180,14 @@ function ProcessList({ processes, serverId, onRefresh, isEditing }) {
           >
             <div className="flex items-center gap-2 min-w-0 flex-1">
               <div className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${
-                process.is_running ? 'bg-green-500' : 'bg-red-500'
+                effectiveRunning ? 'bg-green-500' : 'bg-red-500'
               }`} />
               <span className="text-gray-700 dark:text-gray-300 truncate">
                 {process.process_name}
               </span>
             </div>
             <div className="flex items-center gap-2 flex-shrink-0">
-              {process.is_running && (
+              {effectiveRunning && (
                 <span className="text-gray-500 dark:text-gray-400">
                   {process.cpu_percent?.toFixed(1) ?? '—'}%
                 </span>
@@ -201,6 +204,8 @@ function ProcessList({ processes, serverId, onRefresh, isEditing }) {
               )}
             </div>
           </div>
+            );
+          })()
         ))}
       </div>
 
@@ -588,6 +593,7 @@ function SingleServerView({ serverId, config, isEditing }) {
 
   const { server, recent_metrics, containers, processes, drives } = data;
   const latestMetric = recent_metrics?.[0] || {};
+  const isStale = !server.is_online;
 
   return (
     <div className="h-full flex flex-col">
@@ -625,6 +631,7 @@ function SingleServerView({ serverId, config, isEditing }) {
             serverId={serverId}
             onRefresh={refresh}
             isEditing={isEditing}
+            isStale={isStale}
           />
         </div>
       )}
@@ -821,6 +828,7 @@ function MultiServerView({ serverIds, config, isEditing }) {
 
         const { server, recent_metrics } = serverData;
         const latestMetric = recent_metrics?.[0] || {};
+        const isStale = !server.is_online;
 
         return (
           <div key={server.id} className="p-3 bg-white dark:bg-gray-800 rounded border border-gray-200 dark:border-gray-700">
@@ -896,6 +904,9 @@ function MultiServerView({ serverIds, config, isEditing }) {
                 {serverData.processes && serverData.processes.length > 0 ? (
                   <div className="space-y-1">
                     {serverData.processes.map((process) => (
+                      (() => {
+                        const effectiveRunning = !isStale && process.is_running;
+                        return (
                       <div
                         key={process.id}
                         className="flex items-center justify-between text-xs group"
@@ -904,12 +915,12 @@ function MultiServerView({ serverIds, config, isEditing }) {
                       >
                         <div className="flex items-center gap-1.5 min-w-0 flex-1">
                           <div className={`w-1 h-1 rounded-full flex-shrink-0 ${
-                            process.is_running ? 'bg-green-500' : 'bg-red-500'
+                            effectiveRunning ? 'bg-green-500' : 'bg-red-500'
                           }`} />
                           <span className="text-gray-700 dark:text-gray-300 truncate">{process.process_name}</span>
                         </div>
                         <div className="flex items-center gap-2 flex-shrink-0">
-                          {process.is_running && (
+                          {effectiveRunning && (
                             <span className="text-gray-500 dark:text-gray-400">
                               {process.cpu_percent?.toFixed(1) ?? '—'}%
                             </span>
@@ -925,6 +936,8 @@ function MultiServerView({ serverIds, config, isEditing }) {
                           )}
                         </div>
                       </div>
+                        );
+                      })()
                     ))}
                   </div>
                 ) : (
