@@ -32,3 +32,4 @@ class User(Base):
     garmin_credential = relationship("GarminCredential", back_populates="user", uselist=False, cascade="all, delete-orphan")
     garmin_daily_stats = relationship("GarminDailyStat", back_populates="user", cascade="all, delete-orphan")
     garmin_activities = relationship("GarminActivity", back_populates="user", cascade="all, delete-orphan")
+    app_access = relationship("UserAppAccess", back_populates="user", cascade="all, delete-orphan")

@@ -4,7 +4,9 @@ A self-hosted, multi-user personal dashboard that aggregates various data source
 
 ## Features
 
-- Multi-user support with JWT authentication
+- Multi-user support with JWT authentication and **central auth system** (SSO across multiple apps)
+- Role-based access control per application (admin / user / viewer)
+- Admin panel for managing users and app access
 - Drag-and-drop customizable widget grid
 - **Widget alert system** with priority notifications and visual indicators
 - Dark mode support
@@ -101,6 +103,20 @@ uvicorn app.main:app --reload
 ```
 
 The API will be available at `http://localhost:8000`. API docs at `http://localhost:8000/api/v1/openapi.json`.
+
+### 3b. First-time admin setup
+
+After the backend is running, navigate to `/register` in the frontend. **The first account created on a fresh database is automatically granted admin privileges** — no extra steps needed.
+
+Once your admin account exists, you can create additional users through the **Admin panel** (`/admin`) rather than through public registration.
+
+To disable public registration after your initial setup, add this to `backend/.env`:
+
+```
+ALLOW_REGISTRATION=False
+```
+
+With registration disabled, all new accounts must be created by an admin via the Admin → Users panel. The first-registration bootstrap always works regardless of this setting.
 
 ### 4. Frontend
 
@@ -479,6 +495,75 @@ python3 test_alert.py acknowledge widget-1234567890
 ```
 
 **Full documentation:** See [docs/WIDGET_ALERTS.md](docs/WIDGET_ALERTS.md) for complete API reference, examples, and best practices.
+
+## Central Auth System
+
+Personal Dash acts as a central authentication provider for other self-hosted apps on the same server. Users log in once and can access all integrated apps without logging in again.
+
+### How it works
+
+- At login, JWTs include an `apps` claim: `{"personal_dash": "admin", "netscan": "user", ...}`
+- Other apps on the same server validate these tokens using the shared `SECRET_KEY` — no network calls required
+- Access levels per app: `none` | `viewer` | `user` | `admin`
+- Managed via the Admin panel → Apps tab
+
+### Admin panel
+
+Navigate to `/admin` (admin users only):
+
+- **Users tab** — create, edit, delete users; toggle active/admin status; set per-app access levels
+- **Apps tab** — register new apps, activate/deactivate; includes the integration code snippet
+
+### Registering a new app
+
+1. Go to **Admin → Apps → Register App**
+2. Set a unique slug (e.g. `my_app`) — this is what gets embedded in the JWT
+3. Go to **Admin → Users** → click **Access** on each user → assign their level for the new app
+4. Copy `docs/auth_integration.py` into your app and set `APP_SLUG` to match
+
+### Integration pattern (Python / FastAPI)
+
+Add to your app's `.env`:
+
+```
+PERSONAL_DASH_SECRET_KEY=<same SECRET_KEY as personal_dash backend>
+```
+
+Install the dependency:
+
+```bash
+pip install python-jose[cryptography]
+```
+
+Copy [`docs/auth_integration.py`](docs/auth_integration.py) into your project and add the dependency to your routes:
+
+```python
+from auth_integration import require_viewer, require_admin
+
+@app.get("/data")
+def get_data(payload: dict = Depends(require_viewer)):
+    return {"user": payload["email"]}
+```
+
+### Token verify endpoint (non-Python apps)
+
+Any app can validate a token without the shared secret by calling:
+
+```
+POST /api/v1/auth/verify
+Authorization: Bearer <token>
+Content-Type: application/json
+
+{"app_slug": "my_app", "min_level": "viewer"}
+```
+
+Returns `200` with user info and access level, or `401`/`403` on failure.
+
+### Same-domain SSO
+
+If other apps are served under the same domain (e.g. via nginx path routing), they can read Personal Dash's `access_token` from `localStorage` directly and exchange it for their own session via a `pd-exchange` endpoint. See the NetScan integration for a reference implementation.
+
+---
 
 ## Development
 

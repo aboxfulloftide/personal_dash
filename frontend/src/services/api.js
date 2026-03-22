@@ -56,7 +56,7 @@ api.interceptors.response.use(
         isRefreshing = false;
         localStorage.removeItem('access_token');
         localStorage.removeItem('refresh_token');
-        window.location.href = '/login';
+        window.location.href = '/personal_dash/login';
         return Promise.reject(new Error('No refresh token available'));
       }
 
@@ -81,7 +81,7 @@ api.interceptors.response.use(
         processQueue(refreshError, null);
         localStorage.removeItem('access_token');
         localStorage.removeItem('refresh_token');
-        window.location.href = '/login';
+        window.location.href = '/personal_dash/login';
         return Promise.reject(refreshError);
       } finally {
         isRefreshing = false;

@@ -1,5 +1,6 @@
 from app.models.user import User
 from app.models.auth import RefreshToken, PasswordResetToken
+from app.models.access import App, UserAppAccess
 from app.models.widget import WidgetConfig, DashboardLayout
 from app.models.server import Server, ServerMetric, DockerContainer, ServerAlert, AlertHistory
 from app.models.package import Package, PackageEvent, EmailAccount
@@ -37,4 +38,6 @@ __all__ = [
     "Router",
     "RouterPollResult",
     "Esp32Device",
+    "App",
+    "UserAppAccess",
 ]

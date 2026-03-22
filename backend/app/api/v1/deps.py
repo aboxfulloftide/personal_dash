@@ -74,6 +74,11 @@ CurrentAdminUser = Annotated[User, Depends(get_current_admin_user)]
 DbSession = Annotated[Session, Depends(get_db)]
 
 
+def get_user_by_id_from_db(db: Session, user_id: int) -> User | None:
+    """Direct DB lookup — used by the verify endpoint."""
+    return get_user_by_id(db, user_id)
+
+
 def verify_api_key(
     server_id: int,
     db: Session,

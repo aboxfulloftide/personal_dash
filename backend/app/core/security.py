@@ -23,8 +23,18 @@ def get_password_hash(password: str) -> str:
     return pwd_context.hash(password)
 
 
-def create_access_token(subject: str | Any, expires_delta: timedelta | None = None) -> str:
-    """Create a JWT access token."""
+def create_access_token(
+    subject: str | Any,
+    expires_delta: timedelta | None = None,
+    apps: dict[str, str] | None = None,
+    email: str | None = None,
+) -> str:
+    """Create a JWT access token.
+
+    apps:  optional {app_slug: access_level} dict embedded as the 'apps' claim.
+    email: optional user email, embedded so external apps can identify the user
+           without making a second API call.
+    """
     if expires_delta:
         expire = datetime.now(timezone.utc) + expires_delta
     else:
@@ -32,11 +42,15 @@ def create_access_token(subject: str | Any, expires_delta: timedelta | None = No
             minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES
         )
 
-    to_encode = {
+    to_encode: dict[str, Any] = {
         "exp": expire,
         "sub": str(subject),
         "type": "access",
     }
+    if apps is not None:
+        to_encode["apps"] = apps
+    if email is not None:
+        to_encode["email"] = email
     encoded_jwt = jwt.encode(to_encode, settings.SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt
 

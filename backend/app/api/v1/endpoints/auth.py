@@ -1,11 +1,12 @@
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, Request, status
 from sqlalchemy import select, delete
 
 from app.core.config import settings
-from app.core.security import generate_refresh_token, hash_token, create_access_token
-from app.crud.user import get_user_by_email, create_user, authenticate_user
+from app.core.security import generate_refresh_token, hash_token, create_access_token, decode_access_token
+from app.crud.user import get_user_by_email, create_user, authenticate_user, is_first_user
+from app.crud.access import build_apps_claim
 from app.models.auth import RefreshToken
 from app.models.user import User
 from app.schemas.auth import (
@@ -16,7 +17,8 @@ from app.schemas.auth import (
     MessageResponse,
 )
 from app.schemas.user import UserCreate, UserResponse, UserUpdate
-from app.api.v1.deps import CurrentActiveUser, DbSession
+from app.schemas.access import VerifyRequest, VerifyResponse
+from app.api.v1.deps import CurrentActiveUser, DbSession, get_user_by_id_from_db
 
 router = APIRouter(prefix="/auth", tags=["authentication"])
 
@@ -25,14 +27,28 @@ router = APIRouter(prefix="/auth", tags=["authentication"])
     "/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED
 )
 def register(user_in: UserCreate, db: DbSession) -> User:
-    """Register a new user."""
-    existing_user = get_user_by_email(db, user_in.email)
-    if existing_user:
+    """Register a new user.
+
+    If no users exist yet, the first registration becomes an admin automatically
+    regardless of the ALLOW_REGISTRATION setting (bootstrap).
+
+    After that, registration requires ALLOW_REGISTRATION=True in the environment.
+    When disabled, new users must be created by an admin via the /admin/users endpoints.
+    """
+    first = is_first_user(db)
+
+    if not first and not settings.ALLOW_REGISTRATION:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Registration is closed. Contact an administrator to create an account.",
+        )
+
+    if get_user_by_email(db, user_in.email):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST, detail="Email already registered"
         )
 
-    user = create_user(db, user_in)
+    user = create_user(db, user_in, is_admin=first)
     return user
 
 
@@ -52,7 +68,8 @@ def login(login_data: LoginRequest, db: DbSession) -> dict:
             status_code=status.HTTP_403_FORBIDDEN, detail="Account is inactive"
         )
 
-    access_token = create_access_token(subject=user.id)
+    apps_claim = build_apps_claim(db, user)
+    access_token = create_access_token(subject=user.id, apps=apps_claim, email=user.email)
     refresh_token = generate_refresh_token()
 
     # Store as naive datetime (MySQL doesn't store timezone info)
@@ -111,7 +128,8 @@ def refresh_token(refresh_data: RefreshRequest, db: DbSession) -> dict:
 
     db.delete(db_token)
 
-    access_token = create_access_token(subject=user.id)
+    apps_claim = build_apps_claim(db, user)
+    access_token = create_access_token(subject=user.id, apps=apps_claim, email=user.email)
     new_refresh_token = generate_refresh_token()
 
     # Store as naive datetime (MySQL doesn't store timezone info)
@@ -180,3 +198,56 @@ def update_current_user(
     db.commit()
     db.refresh(current_user)
     return current_user
+
+
+@router.post("/verify", response_model=VerifyResponse)
+def verify_token(
+    request: Request,
+    verify_in: VerifyRequest,
+    db: DbSession,
+) -> VerifyResponse:
+    """Validate a bearer token and return user info + app access levels.
+
+    Intended for other apps that want to verify a personal-dash JWT.
+    Pass the token in the Authorization: Bearer header.
+    Optionally include app_slug and min_level to enforce access requirements.
+    """
+    auth_header = request.headers.get("Authorization", "")
+    if not auth_header.startswith("Bearer "):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing or invalid Authorization header")
+
+    token = auth_header[7:]
+    payload = decode_access_token(token)
+    if not payload:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired token")
+
+    user_id = int(payload["sub"])
+    user = get_user_by_id_from_db(db, user_id)
+    if not user or not user.is_active:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found or inactive")
+
+    apps_claim: dict[str, str] = payload.get("apps", {})
+
+    # If old token without apps claim, rebuild from DB
+    if not apps_claim:
+        apps_claim = build_apps_claim(db, user)
+
+    access_level: str | None = None
+    if verify_in.app_slug:
+        RANK = {"none": 0, "viewer": 1, "user": 2, "admin": 3}
+        access_level = apps_claim.get(verify_in.app_slug, "none")
+        if RANK.get(access_level, 0) < RANK.get(verify_in.min_level, 1):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Insufficient access: has '{access_level}', requires '{verify_in.min_level}'",
+            )
+
+    return VerifyResponse(
+        valid=True,
+        user_id=user.id,
+        email=user.email,
+        display_name=user.display_name,
+        is_admin=user.is_admin,
+        apps=apps_claim,
+        access_level=access_level,
+    )

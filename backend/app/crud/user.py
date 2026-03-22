@@ -1,5 +1,5 @@
 from sqlalchemy.orm import Session
-from sqlalchemy import select
+from sqlalchemy import select, func
 
 from app.models.user import User
 from app.schemas.user import UserCreate
@@ -18,12 +18,19 @@ def get_user_by_id(db: Session, user_id: int) -> User | None:
     return db.execute(stmt).scalar_one_or_none()
 
 
-def create_user(db: Session, user_in: UserCreate) -> User:
+def is_first_user(db: Session) -> bool:
+    """Return True if no users exist yet (used to bootstrap the first admin)."""
+    count = db.execute(select(func.count()).select_from(User)).scalar_one()
+    return count == 0
+
+
+def create_user(db: Session, user_in: UserCreate, is_admin: bool = False) -> User:
     """Create a new user with hashed password."""
     db_user = User(
         email=user_in.email,
         password_hash=get_password_hash(user_in.password),
         display_name=user_in.display_name,
+        is_admin=is_admin,
     )
     db.add(db_user)
     db.commit()
