@@ -587,9 +587,89 @@ def require_access(token: str, app_slug: str, min_level="viewer"):
   );
 }
 
+// ─── Settings Tab ────────────────────────────────────────────────────────────
+
+function SettingsTab() {
+  const [intervalHours, setIntervalHours] = useState('');
+  const [retentionDays, setRetentionDays] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    api.get('/admin/settings/speedtest')
+      .then((r) => {
+        setIntervalHours(String(r.data.interval_hours));
+        setRetentionDays(String(r.data.retention_days));
+      })
+      .catch(() => setError('Failed to load settings'))
+      .finally(() => setLoading(false));
+  }, []);
+
+  const handleSave = async (e) => {
+    e.preventDefault();
+    setSaving(true);
+    setError('');
+    setSaved(false);
+    try {
+      await api.put('/admin/settings/speedtest', {
+        interval_hours: parseFloat(intervalHours),
+        retention_days: parseInt(retentionDays, 10),
+      });
+      setSaved(true);
+      setTimeout(() => setSaved(false), 3000);
+    } catch (err) {
+      setError(err.response?.data?.detail || 'Failed to save settings');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (loading) return <p className="text-sm text-gray-500 dark:text-gray-400">Loading…</p>;
+
+  return (
+    <div className="space-y-6 max-w-lg">
+      <div>
+        <h2 className="text-base font-semibold text-gray-900 dark:text-white mb-1">Speed Test Schedule</h2>
+        <p className="text-sm text-gray-500 dark:text-gray-400">
+          The server runs a speed test automatically and stores results for all users.
+        </p>
+      </div>
+
+      <form onSubmit={handleSave} className="space-y-4">
+        <InputField
+          label="Interval (hours)"
+          type="number"
+          value={intervalHours}
+          onChange={setIntervalHours}
+          hint="How often to auto-run a speed test. Min 0.25 (15 min), e.g. 6 = every 6 hours."
+        />
+        <InputField
+          label="Retention (days)"
+          type="number"
+          value={retentionDays}
+          onChange={setRetentionDays}
+          hint="How many days of speed test history to keep."
+        />
+
+        {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
+
+        <button
+          type="submit"
+          disabled={saving}
+          className="px-4 py-2 text-sm font-medium bg-blue-600 hover:bg-blue-700 text-white rounded-md disabled:opacity-50"
+        >
+          {saving ? 'Saving…' : saved ? 'Saved!' : 'Save'}
+        </button>
+      </form>
+    </div>
+  );
+}
+
 // ─── Page shell ──────────────────────────────────────────────────────────────
 
-const TABS = ['Users', 'Apps'];
+const TABS = ['Users', 'Apps', 'Settings'];
 
 export default function AdminPage() {
   const { user } = useAuth();
@@ -659,6 +739,7 @@ export default function AdminPage() {
 
         {activeTab === 'Users' && <UsersTab apps={apps} />}
         {activeTab === 'Apps' && <AppsTab apps={apps} setApps={setApps} />}
+        {activeTab === 'Settings' && <SettingsTab />}
       </main>
     </div>
   );

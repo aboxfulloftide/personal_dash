@@ -1,4 +1,5 @@
 from fastapi import APIRouter, HTTPException, status
+from pydantic import BaseModel, Field
 
 from app.api.v1.deps import CurrentAdminUser, DbSession
 from app.crud.access import (
@@ -196,3 +197,30 @@ def revoke_app_access(
 ):
     if not remove_user_access(db, user_id, app_id):
         raise HTTPException(status_code=404, detail="Access entry not found")
+
+
+# ---------------------------------------------------------------------------
+# System settings
+# ---------------------------------------------------------------------------
+
+class SpeedTestSettings(BaseModel):
+    interval_hours: float = Field(..., ge=0.25, le=168, description="Hours between scheduled speed tests")
+    retention_days: int = Field(..., ge=1, le=365, description="Days to keep speed test history")
+
+
+@router.get("/settings/speedtest", response_model=SpeedTestSettings)
+def get_speedtest_settings(db: DbSession, current_user: CurrentAdminUser):
+    from app.crud.system_settings import get_speedtest_settings
+    return get_speedtest_settings(db)
+
+
+@router.put("/settings/speedtest", response_model=SpeedTestSettings)
+def update_speedtest_settings(
+    payload: SpeedTestSettings,
+    db: DbSession,
+    current_user: CurrentAdminUser,
+):
+    from app.crud.system_settings import set_setting, get_speedtest_settings
+    set_setting(db, "speedtest_interval_hours", str(payload.interval_hours))
+    set_setting(db, "speedtest_retention_days", str(payload.retention_days))
+    return get_speedtest_settings(db)

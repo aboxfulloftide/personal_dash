@@ -317,7 +317,7 @@ export default function NetworkStatusWidget({ config }) {
 
       // Refresh history if it's open
       if (showSpeedTestHistory) {
-        const hours = speedTestTimeRange === '24h' ? 24 : speedTestTimeRange === '7d' ? 168 : 720;
+        const hours = speedTestTimeRange === '24h' ? 24 : speedTestTimeRange === '7d' ? 168 : speedTestTimeRange === '30d' ? 720 : 2160;
         await fetchSpeedTestHistory(hours);
       }
     } catch (err) {
@@ -372,7 +372,7 @@ export default function NetworkStatusWidget({ config }) {
   // Fetch speed test history when expanded or time range changes
   useEffect(() => {
     if (showSpeedTestHistory) {
-      const hours = speedTestTimeRange === '24h' ? 24 : speedTestTimeRange === '7d' ? 168 : 720;
+      const hours = speedTestTimeRange === '24h' ? 24 : speedTestTimeRange === '7d' ? 168 : speedTestTimeRange === '30d' ? 720 : 2160;
       fetchSpeedTestHistory(hours);
     }
   }, [showSpeedTestHistory, speedTestTimeRange, fetchSpeedTestHistory]);
@@ -575,7 +575,7 @@ export default function NetworkStatusWidget({ config }) {
 
                 {/* Time Range Selector */}
                 <div className="flex gap-2">
-                  {['24h', '7d', '30d'].map((range) => (
+                  {['24h', '7d', '30d', '90d'].map((range) => (
                     <button
                       key={range}
                       onClick={() => setSpeedTestTimeRange(range)}
@@ -607,8 +607,6 @@ export default function NetworkStatusWidget({ config }) {
                           const date = new Date(timestamp);
                           if (speedTestTimeRange === '24h') {
                             return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-                          } else if (speedTestTimeRange === '7d') {
-                            return date.toLocaleDateString([], { month: 'short', day: 'numeric' });
                           } else {
                             return date.toLocaleDateString([], { month: 'short', day: 'numeric' });
                           }

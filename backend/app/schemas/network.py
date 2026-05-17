@@ -111,7 +111,7 @@ class SpeedTestRequest(BaseModel):
 class SpeedTestResultRecord(BaseModel):
     """Schema for speed test result from database."""
     id: int
-    user_id: int
+    user_id: Optional[int]
     download_mbps: Optional[float]
     upload_mbps: Optional[float]
     ping_ms: Optional[float]

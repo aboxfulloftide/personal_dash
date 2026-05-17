@@ -7,7 +7,7 @@ from app.models.network import SpeedTestResult
 
 def create_speed_test_result(
     db: Session,
-    user_id: int,
+    user_id: int | None = None,
     download_mbps: float | None = None,
     upload_mbps: float | None = None,
     ping_ms: float | None = None,
@@ -54,17 +54,19 @@ def get_speed_test_history(
     db: Session, user_id: int, hours: int = 168
 ) -> list[SpeedTestResult]:
     """
-    Get speed test history for a user within the last N hours.
+    Get speed test history within the last N hours.
+    Returns system-scheduled results (user_id IS NULL) plus any the user triggered manually.
     Default is 168 hours (7 days).
     """
+    from sqlalchemy import or_
     cutoff = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(hours=hours)
     result = db.execute(
         select(SpeedTestResult)
         .where(
-            SpeedTestResult.user_id == user_id,
+            or_(SpeedTestResult.user_id == user_id, SpeedTestResult.user_id.is_(None)),
             SpeedTestResult.timestamp >= cutoff,
         )
-        .order_by(SpeedTestResult.timestamp.asc())  # Chronological for graphing
+        .order_by(SpeedTestResult.timestamp.asc())
     )
     return list(result.scalars().all())
 
@@ -80,14 +82,16 @@ def calculate_speed_test_stats(db: Session, user_id: int) -> dict:
     stats = {}
 
     # Calculate for each time window
+    from sqlalchemy import or_
     for days, label in [(1, "24h"), (7, "7d")]:
         cutoff = now - timedelta(days=days)
+        user_filter = or_(SpeedTestResult.user_id == user_id, SpeedTestResult.user_id.is_(None))
 
         # Get count of successful tests
         count_result = db.execute(
             select(func.count(SpeedTestResult.id))
             .where(
-                SpeedTestResult.user_id == user_id,
+                user_filter,
                 SpeedTestResult.timestamp >= cutoff,
                 SpeedTestResult.is_successful == True,
             )
@@ -98,7 +102,7 @@ def calculate_speed_test_stats(db: Session, user_id: int) -> dict:
         avg_download_result = db.execute(
             select(func.avg(SpeedTestResult.download_mbps))
             .where(
-                SpeedTestResult.user_id == user_id,
+                user_filter,
                 SpeedTestResult.timestamp >= cutoff,
                 SpeedTestResult.is_successful == True,
                 SpeedTestResult.download_mbps.isnot(None),
@@ -110,7 +114,7 @@ def calculate_speed_test_stats(db: Session, user_id: int) -> dict:
         avg_upload_result = db.execute(
             select(func.avg(SpeedTestResult.upload_mbps))
             .where(
-                SpeedTestResult.user_id == user_id,
+                user_filter,
                 SpeedTestResult.timestamp >= cutoff,
                 SpeedTestResult.is_successful == True,
                 SpeedTestResult.upload_mbps.isnot(None),

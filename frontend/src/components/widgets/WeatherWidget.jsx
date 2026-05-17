@@ -661,6 +661,25 @@ export default function WeatherWidget({ config }) {
   const displayLocation = config.location_display || data.location;
   const units = config.units || 'imperial';
 
+  // Solstice countdown — computed purely client-side
+  const solsticeInfo = (() => {
+    const now = new Date();
+    const y = now.getFullYear();
+    // Approximate solstice dates (accurate within a day for northern hemisphere)
+    const summerSolstice = new Date(y, 5, 21);   // Jun 21
+    const winterSolstice = new Date(y, 11, 21);  // Dec 21
+    const msPerDay = 86400000;
+    const diffDays = (target) => Math.ceil((target - now) / msPerDay);
+
+    if (now < summerSolstice) {
+      return { days: diffDays(summerSolstice), label: 'longest day' };
+    } else if (now < winterSolstice) {
+      return { days: diffDays(winterSolstice), label: 'shortest day' };
+    } else {
+      return { days: diffDays(new Date(y + 1, 5, 21)), label: 'longest day' };
+    }
+  })();
+
   return (
     <div className="flex flex-col">
       <div className="flex justify-between items-start mb-1">
@@ -673,7 +692,11 @@ export default function WeatherWidget({ config }) {
           <div />
         )}
         <div className="text-xs text-gray-500 dark:text-gray-400 text-right shrink-0 ml-2">
-          {displayLocation}
+          <div>{displayLocation}</div>
+          <div>
+            <span className="font-medium text-gray-700 dark:text-gray-300">{solsticeInfo.days}d</span>
+            {' '}til {solsticeInfo.label}
+          </div>
         </div>
       </div>
 

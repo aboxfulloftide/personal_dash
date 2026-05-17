@@ -288,7 +288,7 @@ async def run_speed_test(
 async def get_speed_test_history(
     current_user: CurrentActiveUser,
     db: Session = Depends(get_db),
-    hours: int = Query(default=168, ge=1, le=720, description="Hours of history to retrieve (default 7d)"),
+    hours: int = Query(default=168, ge=1, le=2160, description="Hours of history to retrieve (default 7d, max 90d)"),
 ):
     """
     Get historical speed test results for graphing.

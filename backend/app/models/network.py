@@ -41,7 +41,7 @@ class SpeedTestResult(Base):
     __tablename__ = "speed_test_results"
 
     id = Column(BigInteger, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=True)
     download_mbps = Column(Float, nullable=True)
     upload_mbps = Column(Float, nullable=True)
     ping_ms = Column(Float, nullable=True)

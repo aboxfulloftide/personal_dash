@@ -391,17 +391,15 @@ async def cleanup_delivered_packages_task():
 
 
 def cleanup_old_speed_tests_task():
-    """
-    Background task that removes speed test results older than 90 days.
-    Runs daily to keep the database clean.
-    """
+    """Removes speed test results older than SPEEDTEST_RETENTION_DAYS."""
     logger.info("Starting cleanup of old speed test results")
 
     db = SessionLocal()
     try:
         from app.crud.speedtest import cleanup_old_speed_tests
+        from app.core.config import settings
 
-        deleted_count = cleanup_old_speed_tests(db, days=90)
+        deleted_count = cleanup_old_speed_tests(db, days=settings.SPEEDTEST_RETENTION_DAYS)
         logger.info(f"Cleaned up {deleted_count} old speed test results")
 
     except Exception as e:
@@ -410,6 +408,59 @@ def cleanup_old_speed_tests_task():
         db.close()
 
     logger.info("Cleanup old speed tests task completed")
+
+
+def auto_speed_test_task():
+    """
+    Background task that runs a speed test on a server-wide schedule.
+    Results are stored with user_id=NULL and are visible to all users.
+    The interval is read from system_settings each run so GUI changes take effect
+    without a restart. The APScheduler job runs every 15 minutes and exits early
+    if not enough time has elapsed since the last test.
+    """
+    db = SessionLocal()
+    try:
+        from app.utils.speedtest_utils import run_speedtest
+        from app.crud.speedtest import create_speed_test_result, get_latest_speed_test
+        from app.crud.system_settings import get_speedtest_settings
+        from sqlalchemy import or_
+
+        cfg = get_speedtest_settings(db)
+        interval_seconds = cfg["interval_hours"] * 3600
+
+        # Check when the last system test ran
+        from app.models.network import SpeedTestResult
+        from sqlalchemy import select, desc
+        last = db.execute(
+            select(SpeedTestResult)
+            .where(SpeedTestResult.user_id.is_(None))
+            .order_by(desc(SpeedTestResult.timestamp))
+            .limit(1)
+        ).scalar_one_or_none()
+
+        if last is not None:
+            elapsed = (datetime.now(timezone.utc).replace(tzinfo=None) - last.timestamp).total_seconds()
+            if elapsed < interval_seconds:
+                logger.debug(f"Speed test skipped — {elapsed/3600:.1f}h elapsed, interval is {cfg['interval_hours']}h")
+                return
+
+        logger.info("Running scheduled speed test")
+        test_result = run_speedtest()
+        create_speed_test_result(db=db, user_id=None, **test_result)
+
+        if test_result["is_successful"]:
+            logger.info(
+                f"Scheduled speed test completed: "
+                f"{test_result['download_mbps']} Mbps down, "
+                f"{test_result['upload_mbps']} Mbps up"
+            )
+        else:
+            logger.error(f"Scheduled speed test failed: {test_result['error_message']}")
+
+    except Exception as e:
+        logger.error(f"Error in auto speed test task: {e}")
+    finally:
+        db.close()
 
 
 async def reminders_midnight_reset_task():
@@ -876,7 +927,16 @@ def start_scheduler():
         cleanup_old_speed_tests_task,
         trigger=IntervalTrigger(days=1),
         id="cleanup_speed_tests",
-        name="Cleanup old speed test results (90+ days)",
+        name="Cleanup old speed test results",
+        replace_existing=True,
+    )
+
+    # Auto-run speed test — polls every 15 min, actual interval enforced inside the task via DB setting
+    scheduler.add_job(
+        auto_speed_test_task,
+        trigger=IntervalTrigger(minutes=15),
+        id="auto_speed_test",
+        name="Auto speed test (server-wide)",
         replace_existing=True,
     )
 

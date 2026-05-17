@@ -392,16 +392,17 @@ async def get_calendar(
             continue
         all_events.extend(result)
 
+    # Always compute per-tab counts so the UI can display them regardless of view
+    date_ranges = calculate_date_ranges(now)
+    events_today_count = count_events_in_range(all_events, *date_ranges['today'])
+    events_week_count = count_events_in_range(all_events, *date_ranges['week'])
+    events_month_count = count_events_in_range(all_events, *date_ranges['month'])
+
     # Auto-select best view or use requested view
     auto_selected_view = None
-    events_today_count = 0
-    events_week_count = 0
-    events_month_count = 0
 
     if auto_fallback:
-        # Calculate date ranges and count events
-        date_ranges = calculate_date_ranges(now)
-        selected_view, events_today_count, events_week_count, events_month_count = select_best_view(all_events, date_ranges)
+        selected_view, _, _, _ = select_best_view(all_events, date_ranges)
 
         # Use the auto-selected view
         view = selected_view

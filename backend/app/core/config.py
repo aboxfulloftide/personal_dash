@@ -25,13 +25,14 @@ class Settings(BaseSettings):
 
     # JWT
     SECRET_KEY: str
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 15
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 43200  # 30 days
     REFRESH_TOKEN_EXPIRE_DAYS: int = 30
 
     # Registration
     # Set to False after initial setup to prevent new public registrations.
     # New users must then be created via the Admin panel.
     ALLOW_REGISTRATION: bool = True
+
 
     class Config:
         env_file = ".env"
